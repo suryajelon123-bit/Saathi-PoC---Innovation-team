@@ -143,14 +143,14 @@ export function AiAssistantSheet({
     }
     return lang === 'hi'
       ? [
-          'कक्षा 1-3 के बच्चों को पढ़ना शुरू कराने का खेल बताएं',
+          'बच्चों को निजी स्कूल जाने से कैसे रोकें?',
+          'DBT व आधार-बैंक सीडिंग की देरी कैसे सुलझाएं?',
           'अलग-अलग स्तर के बच्चों को एक साथ कैसे पढ़ाएं?',
-          'लंबे समय से गैर-हाज़िर बच्चे की वापसी कैसे कराएं?',
         ]
       : [
-          'Give me a 10-minute FLN reading game for Class 1–3',
+          'How do we stop students shifting to private schools?',
+          'How to resolve stalled DBT Aadhaar-bank seeding?',
           'How do I manage 3 reading levels in one classroom?',
-          'How to welcome back a seasonally absent child?',
         ];
   }, [activeScreen, lang, selectedTheme]);
 

@@ -1,7 +1,9 @@
+import { User } from 'firebase/auth';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { recordTelemetryEventToFirestore } from '../services/saathiFirestore';
 import { AbVariant, Language, ScreenId, TelemetryEvent, TelemetryState } from '../types';
 
-const STORAGE_KEY = 'saathi_sensing_telemetry_v1';
+const STORAGE_KEY = 'saathi_sensing_telemetry_v2';
 
 function createInitialState(variant?: AbVariant): TelemetryState {
   const assignedVariant: AbVariant = variant ?? 'B';
@@ -13,6 +15,7 @@ function createInitialState(variant?: AbVariant): TelemetryState {
     initialLanguage: 'hi',
     currentLanguage: 'hi',
     languageSwitchCount: 0,
+    walkthroughStatus: 'pending',
     readAloudCount: 0,
     mapEnteredAtMs: null,
     firstTileTappedId: null,
@@ -24,6 +27,8 @@ function createInitialState(variant?: AbVariant): TelemetryState {
     voiceButtonTappedCount: 0,
     voiceRecordingStartedCount: 0,
     voiceRecordingCompletedCount: 0,
+    winMomentsCount: 0,
+    whatsappSharesCount: 0,
     ownChallengeStartedCount: 0,
     ownChallengeCompletedCount: 0,
     timeOnFeedMs: 0,
@@ -32,11 +37,12 @@ function createInitialState(variant?: AbVariant): TelemetryState {
     events: [
       {
         id: `evt-${Date.now()}`,
+        sessionId,
         timestamp: new Date().toISOString(),
         prototype_data: true,
         variant: assignedVariant,
         eventType: 'session_started',
-        screen: 'welcome',
+        screen: 'map',
         metadata: { initialLanguage: 'hi', prototype_data: true },
       },
     ],
@@ -54,6 +60,9 @@ function loadTelemetry(): TelemetryState {
         return {
           ...parsed,
           variant: normalizedVariant,
+          walkthroughStatus: parsed.walkthroughStatus ?? 'pending',
+          winMomentsCount: parsed.winMomentsCount ?? 0,
+          whatsappSharesCount: parsed.whatsappSharesCount ?? 0,
           aiAssistantQueriesCount: parsed.aiAssistantQueriesCount ?? 0,
         };
       }
@@ -64,9 +73,11 @@ function loadTelemetry(): TelemetryState {
   return createInitialState('B');
 }
 
-export function useTelemetry() {
+export function useTelemetry(cloudUser: User | null = null) {
   const [telemetry, setTelemetry] = useState<TelemetryState>(() => loadTelemetry());
   const feedEnteredAtRef = useRef<number | null>(null);
+  const cloudUserRef = useRef<User | null>(cloudUser);
+  cloudUserRef.current = cloudUser;
 
   useEffect(() => {
     try {
@@ -83,9 +94,14 @@ export function useTelemetry() {
       metadata?: Record<string, string | number | boolean>,
       updater?: (prev: TelemetryState) => Partial<TelemetryState>
     ) => {
+      let createdEvent: TelemetryEvent | null = null;
+      let activeLang: Language = 'hi';
+
       setTelemetry((prev) => {
+        activeLang = prev.currentLanguage;
         const nextEvent: TelemetryEvent = {
-          id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          sessionId: prev.sessionId,
           timestamp: new Date().toISOString(),
           prototype_data: true,
           variant: prev.variant,
@@ -93,6 +109,7 @@ export function useTelemetry() {
           screen,
           metadata: { ...metadata, prototype_data: true },
         };
+        createdEvent = nextEvent;
         const patch = updater ? updater(prev) : {};
         return {
           ...prev,
@@ -100,6 +117,19 @@ export function useTelemetry() {
           events: [nextEvent, ...prev.events].slice(0, 150),
         };
       });
+
+      if (createdEvent) {
+        const themeId =
+          typeof metadata?.themeId === 'string' ? metadata.themeId : undefined;
+        void recordTelemetryEventToFirestore({
+          user: cloudUserRef.current,
+          event: createdEvent,
+          lang: activeLang,
+          themeId,
+        }).catch(() => {
+          // Non-blocking background analytics sync
+        });
+      }
     },
     []
   );
@@ -114,6 +144,18 @@ export function useTelemetry() {
           currentLanguage: nextLang,
           languageSwitchCount: prev.languageSwitchCount + 1,
         })
+      );
+    },
+    [appendEvent]
+  );
+
+  const trackWalkthroughOutcome = useCallback(
+    (status: 'completed' | 'skipped') => {
+      appendEvent(
+        status === 'completed' ? 'walkthrough_completed' : 'walkthrough_skipped',
+        'map',
+        { status },
+        () => ({ walkthroughStatus: status })
       );
     },
     [appendEvent]
@@ -174,7 +216,8 @@ export function useTelemetry() {
       setTelemetry((prev) => {
         if (depthPct <= prev.maxPlanScrollDepthPct) return prev;
         const nextEvent: TelemetryEvent = {
-          id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          sessionId: prev.sessionId,
           timestamp: new Date().toISOString(),
           prototype_data: true,
           variant: prev.variant,
@@ -219,24 +262,29 @@ export function useTelemetry() {
     [appendEvent]
   );
 
+  const trackWinMoment = useCallback(
+    (screen: ScreenId, themeId: string, method: 'quick_tap' | 'voice' | 'text') => {
+      appendEvent('win_moment_triggered', screen, { themeId, method }, (prev) => ({
+        winMomentsCount: (prev.winMomentsCount ?? 0) + 1,
+      }));
+    },
+    [appendEvent]
+  );
+
+  const trackWhatsappShare = useCallback(
+    (screen: ScreenId, themeId: string) => {
+      appendEvent('whatsapp_share_clicked', screen, { themeId }, (prev) => ({
+        whatsappSharesCount: (prev.whatsappSharesCount ?? 0) + 1,
+      }));
+    },
+    [appendEvent]
+  );
+
   const trackOwnChallengeStarted = useCallback(() => {
-    setTelemetry((prev) => {
-      const nextEvent: TelemetryEvent = {
-        id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        timestamp: new Date().toISOString(),
-        prototype_data: true,
-        variant: prev.variant,
-        eventType: 'own_challenge_started',
-        screen: 'share',
-        metadata: { prototype_data: true },
-      };
-      return {
-        ...prev,
-        ownChallengeStartedCount: prev.ownChallengeStartedCount + 1,
-        events: [nextEvent, ...prev.events].slice(0, 150),
-      };
-    });
-  }, []);
+    appendEvent('own_challenge_started', 'share', {}, (prev) => ({
+      ownChallengeStartedCount: prev.ownChallengeStartedCount + 1,
+    }));
+  }, [appendEvent]);
 
   const trackOwnChallengeCompleted = useCallback(
     (method: 'voice' | 'text', topicId: string) => {
@@ -329,6 +377,7 @@ export function useTelemetry() {
   return {
     telemetry,
     trackLanguageSwitch,
+    trackWalkthroughOutcome,
     trackReadAloud,
     trackLoginCompleted,
     markMapEntered,
@@ -338,6 +387,8 @@ export function useTelemetry() {
     trackVoiceButtonTapped,
     trackVoiceRecordingStarted,
     trackVoiceRecordingCompleted,
+    trackWinMoment,
+    trackWhatsappShare,
     trackOwnChallengeStarted,
     trackOwnChallengeCompleted,
     startFeedTimer,

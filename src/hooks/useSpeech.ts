@@ -28,7 +28,6 @@ function pickIndianBrowserVoice(
 ): SpeechSynthesisVoice | undefined {
   const targetLangPrefix = lang === 'hi' ? 'hi' : 'en-in';
 
-  // 1. Exact locale match (hi-IN or en-IN / en_IN)
   const exactIndian = voices.filter((v) => {
     const normalized = v.lang.toLowerCase().replace('_', '-');
     return lang === 'hi'
@@ -51,8 +50,7 @@ function pickIndianBrowserVoice(
     return exactIndian[0];
   }
 
-  // 2. Match by Indian voice name hints
-  const namedIndian = voices.find((v) => {
+  return voices.find((v) => {
     const lower = v.name.toLowerCase();
     const langLower = v.lang.toLowerCase();
     return (
@@ -60,8 +58,6 @@ function pickIndianBrowserVoice(
       INDIAN_VOICE_NAME_HINTS.some((hint) => lower.includes(hint))
     );
   });
-
-  return namedIndian;
 }
 
 export function useSpeech() {
@@ -72,9 +68,15 @@ export function useSpeech() {
   const audioCacheRef = useRef<Map<string, string>>(new Map());
   const fallbackTimerRef = useRef<number | null>(null);
   const activeRequestIdRef = useRef<number>(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const stop = useCallback(() => {
     activeRequestIdRef.current += 1;
+
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
 
     if (fallbackTimerRef.current !== null) {
       window.clearTimeout(fallbackTimerRef.current);
@@ -103,7 +105,7 @@ export function useSpeech() {
     (id: string, text: string, lang: Language, gender: SpeakerGender, requestToken: number) => {
       if (activeRequestIdRef.current !== requestToken) return;
 
-      const estimatedMs = Math.min(18000, Math.max(3000, text.length * 65));
+      const estimatedMs = Math.min(18000, Math.max(2500, text.length * 60));
       setLoadingAudioId(null);
       setSpeakingId(id);
 
@@ -132,7 +134,7 @@ export function useSpeech() {
               settled = true;
               fallbackTimerRef.current = window.setTimeout(() => {
                 setSpeakingId((curr) => (curr === id ? null : curr));
-              }, 3000);
+              }, 2200);
             }
           };
 
@@ -203,14 +205,25 @@ export function useSpeech() {
         return;
       }
 
+      // Offline / weak-network fast path: immediately use local Indian speech synthesis
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        speakWithIndianBrowserFallback(id, text, lang, speakerGender, requestToken);
+        return;
+      }
+
       setLoadingAudioId(id);
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      const timeoutId = window.setTimeout(() => controller.abort(), 2500);
 
       try {
         const res = await fetch('/api/tts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text, lang, speakerGender }),
+          signal: controller.signal,
         });
+        window.clearTimeout(timeoutId);
 
         if (activeRequestIdRef.current !== requestToken) return;
 
@@ -237,6 +250,7 @@ export function useSpeech() {
 
         speakWithIndianBrowserFallback(id, text, lang, speakerGender, requestToken);
       } catch {
+        window.clearTimeout(timeoutId);
         speakWithIndianBrowserFallback(id, text, lang, speakerGender, requestToken);
       }
     },

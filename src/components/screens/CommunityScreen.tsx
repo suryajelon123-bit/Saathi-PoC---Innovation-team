@@ -1,38 +1,39 @@
+import { User } from 'firebase/auth';
 import {
-  ArrowRight,
+  Activity,
   Award,
   CheckCircle2,
+  ChevronDown,
+  Cloud,
   Crown,
   Flame,
   Heart,
   Loader2,
+  LogIn,
   Medal,
-  Mic,
   Pause,
   Play,
-  Shield,
-  Sparkles,
+  RefreshCw,
   Trophy,
-  Volume2,
-  VolumeX,
   Zap,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import {
   AVATAR_SUNITA,
   DISTRICT_RECOGNITION_LIST,
-  PROBLEM_THEMES,
-  UI_COPY,
 } from '../../data/saathiContent';
+import { CloudLeaderboardRow, signInWithGoogle } from '../../services/saathiFirestore';
 import { CommunityStory, Language, TeacherProfile } from '../../types';
 
 interface CommunityScreenProps {
   lang: Language;
   profile: TeacherProfile | null;
+  cloudUser: User | null;
+  cloudLeaderboard: CloudLeaderboardRow[];
+  cloudSyncing?: boolean;
   stories: CommunityStory[];
   applaudedIds: string[];
   userSolutionsCount: number;
-  userChallengesCount: number;
   xp: number;
   streakDays: number;
   completedWeeksByTheme: Record<string, number[]>;
@@ -42,17 +43,27 @@ interface CommunityScreenProps {
   onSpeak: (id: string, text: string, speakerGender?: 'female' | 'male') => void;
   onToggleApplause: (storyId: string) => void;
   onOpenBadgeTab: () => void;
-  onGoToShare: () => void;
-  onGoToPlan: () => void;
+  onSubmitFeedbackSentiment: (sentiment: 'yes' | 'somewhat' | 'no') => void;
+  onRefreshCloudLeaderboard: () => void;
+  onOpenTeamDashboard: () => void;
+}
+
+function getTeacherTier(xp: number, lang: Language): string {
+  if (xp >= 250) return lang === 'hi' ? 'ज़िला चैंपियन' : 'District Champion';
+  if (xp >= 150) return lang === 'hi' ? 'प्रखंड प्रेरक' : 'Block Trailblazer';
+  if (xp >= 100) return lang === 'hi' ? 'एक्शन साथी' : 'Action Mentor';
+  return lang === 'hi' ? 'नवप्रवर्तक शिक्षक' : 'Rising Teacher';
 }
 
 export function CommunityScreen({
   lang,
   profile,
+  cloudUser,
+  cloudLeaderboard,
+  cloudSyncing = false,
   stories,
   applaudedIds,
   userSolutionsCount,
-  userChallengesCount,
   xp,
   streakDays,
   completedWeeksByTheme,
@@ -62,12 +73,15 @@ export function CommunityScreen({
   onSpeak,
   onToggleApplause,
   onOpenBadgeTab,
-  onGoToShare,
-  onGoToPlan,
+  onSubmitFeedbackSentiment,
+  onRefreshCloudLeaderboard,
+  onOpenTeamDashboard,
 }: CommunityScreenProps) {
   const [activeTab, setActiveTab] = useState<'feed' | 'recognition'>(initialTab);
-  const [badgeSentiment, setBadgeSentiment] = useState<string | null>(null);
+  const [badgeSentiment, setBadgeSentiment] = useState<'yes' | 'somewhat' | 'no' | null>(null);
+  const [showPoll, setShowPoll] = useState(false);
   const [cheeredLeaderIds, setCheeredLeaderIds] = useState<string[]>([]);
+  const [connectingFirebase, setConnectingFirebase] = useState(false);
 
   useEffect(() => {
     setActiveTab(initialTab);
@@ -80,53 +94,58 @@ export function CommunityScreen({
     }
   };
 
-  const toggleCheer = (id: string) => {
-    setCheeredLeaderIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
-  };
-
   const teacherDisplayName =
-    profile?.name || (lang === 'hi' ? 'आप (शिक्षक साथी)' : 'You (Teacher Saathi)');
-  const teacherDistrict =
-    profile?.blockDistrict || (lang === 'hi' ? 'आपका ब्लॉक / ज़िला' : 'Your Block / District');
+    cloudUser?.displayName ||
+    profile?.name ||
+    (lang === 'hi' ? 'आप (शिक्षक साथी)' : 'You (Teacher Saathi)');
 
   const totalWeeksDone = Object.values(completedWeeksByTheme).reduce(
     (sum, w) => sum + w.length,
     0
   );
-  const completedThemesCount = PROBLEM_THEMES.filter(
-    (t) => (completedWeeksByTheme[t.id]?.length ?? 0) >= 4
-  ).length;
-  const totalThanksReceived = 14 + userSolutionsCount * 3;
-  const schoolsReached = 6 + userSolutionsCount * 2;
 
-  // Build live sorted leaderboard combining peer teachers + current user
   const userEntry = {
     id: 'current-user',
     isCurrentUser: true,
+    isLiveCloud: Boolean(cloudUser),
     teacherName: { hi: teacherDisplayName, en: teacherDisplayName },
     schoolAndBlock: {
       hi: profile?.blockDistrict || 'आपका स्कूल व ब्लॉक',
       en: profile?.blockDistrict || 'Your School & Block',
     },
-    district: { hi: '', en: '' },
-    avatarUrl: AVATAR_SUNITA,
-    solutionsShared: userSolutionsCount,
-    teachersHelped: totalThanksReceived,
+    avatarUrl: cloudUser?.photoURL || AVATAR_SUNITA,
+    teachersHelped: 14 + userSolutionsCount * 3,
     xp,
     streakDays,
     weeksCompleted: totalWeeksDone,
-    honorTitle:
-      completedThemesCount >= 1
-        ? { hi: '4-सप्ताह विषय विजेता', en: '4-Week Theme Winner' }
-        : totalWeeksDone >= 1
-        ? { hi: 'प्रगतिशील शिक्षक साथी', en: 'Rising Teacher Saathi' }
-        : { hi: 'नया शिक्षक साथी', en: 'New Teacher Saathi' },
+    honorTitle: {
+      hi: getTeacherTier(xp, 'hi'),
+      en: getTeacherTier(xp, 'en'),
+    },
   };
 
+  const remoteCloudPeers = cloudLeaderboard
+    .filter((row) => !cloudUser || row.uid !== cloudUser.uid)
+    .map((row) => ({
+      id: `cloud_${row.uid}`,
+      isCurrentUser: false,
+      isLiveCloud: true,
+      teacherName: { hi: row.displayName, en: row.displayName },
+      schoolAndBlock: { hi: row.blockDistrict, en: row.blockDistrict },
+      avatarUrl: AVATAR_SUNITA,
+      teachersHelped: 10 + row.solutionsCount * 3,
+      xp: row.xp,
+      streakDays: row.streakDays,
+      weeksCompleted: row.weeksDoneCount,
+      honorTitle: {
+        hi: getTeacherTier(row.xp, 'hi'),
+        en: getTeacherTier(row.xp, 'en'),
+      },
+    }));
+
   const combinedLeaderboard = [
-    ...DISTRICT_RECOGNITION_LIST.map((e) => ({ ...e, isCurrentUser: false })),
+    ...DISTRICT_RECOGNITION_LIST.map((e) => ({ ...e, isCurrentUser: false, isLiveCloud: false })),
+    ...remoteCloudPeers,
     userEntry,
   ]
     .sort((a, b) => b.xp - a.xp)
@@ -138,723 +157,482 @@ export function CommunityScreen({
       ? combinedLeaderboard.find((e) => e.liveRank === myEntry.liveRank - 1) ?? null
       : null;
   const xpNeededForNext = personAbove ? Math.max(5, personAbove.xp - myEntry.xp + 5) : 0;
-  const progressToNextPct = personAbove
-    ? Math.min(95, Math.max(18, Math.round((myEntry.xp / Math.max(1, personAbove.xp)) * 100)))
+  const rankProgressPct = personAbove
+    ? Math.min(95, Math.max(15, Math.round((myEntry.xp / Math.max(1, personAbove.xp)) * 100)))
     : 100;
 
-  const topThree = combinedLeaderboard.slice(0, 3);
-  const podiumOrder = topThree.length === 3 ? [topThree[1], topThree[0], topThree[2]] : topThree;
+  const podiumFirst = combinedLeaderboard[0];
+  const podiumSecond = combinedLeaderboard[1];
+  const podiumThird = combinedLeaderboard[2];
+  const remainingRankings = combinedLeaderboard.slice(3);
 
-  const shields = [
-    {
-      id: 'streak',
-      icon: Flame,
-      title: { hi: '3-दिन की लय', en: '3-Day Streak' },
-      desc: {
-        hi: 'लगातार कक्षा सुधार से जुड़ने पर',
-        en: 'Consistent weekly engagement',
-      },
-      unlocked: streakDays >= 3,
-    },
-    {
-      id: 'first-week',
-      icon: CheckCircle2,
-      title: { hi: 'पहला सप्ताह पूर्ण', en: 'First Week Done' },
-      desc: {
-        hi: 'किसी विषय का पहला सप्ताह पूरा करने पर',
-        en: 'Complete Week 1 of any theme',
-      },
-      unlocked: totalWeeksDone >= 1,
-    },
-    {
-      id: 'four-week-master',
-      icon: Trophy,
-      title: { hi: '4-सप्ताह विषय विजेता', en: '4-Week Theme Winner' },
-      desc: {
-        hi: 'किसी एक विषय के चारों सप्ताह (1–4) पूरे करने पर',
-        en: 'Complete all 4 weeks of a theme',
-      },
-      unlocked: completedThemesCount >= 1,
-    },
-    {
-      id: 'voice-honor',
-      icon: Mic,
-      title: { hi: 'समाधान आवाज़ सम्मान', en: 'Solution Voice Honor' },
-      desc: {
-        hi: 'अपना कक्षा समाधान आवाज़ में साझा करने पर',
-        en: 'Share your own voice solution',
-      },
-      unlocked: userSolutionsCount >= 1,
-    },
-  ];
+  const handleConnectFirebase = async () => {
+    setConnectingFirebase(true);
+    try {
+      await signInWithGoogle();
+    } catch {
+      // Cancelled or handled cleanly
+    } finally {
+      setConnectingFirebase(false);
+    }
+  };
 
   return (
-    <div className="space-y-0">
-      {/* Gamified HUD Strip */}
-      <div className="bg-white border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-3.5 @xl:px-6 py-2.5 flex flex-wrap items-center justify-between gap-2.5">
-          <div className="flex items-center gap-3.5 @xl:gap-6">
-            <div className="flex items-center gap-1.5 text-xs @xl:text-sm font-bold text-[#D97706]">
-              <Flame className="w-4 h-4 @xl:w-5 @xl:h-5 fill-[#F59E0B] text-[#D97706]" />
-              <span className="tabular-nums">
-                {streakDays} {lang === 'hi' ? 'दिन लय' : 'Day Streak'}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-1.5 text-xs @xl:text-sm font-bold text-[#0D5C63]">
-              <Zap className="w-4 h-4 fill-[#0D5C63]" />
-              <span className="tabular-nums">
-                {xp} {lang === 'hi' ? 'अंक' : 'XP'}
-              </span>
-            </div>
-
-            <div className="hidden @xl:flex items-center gap-1.5 text-xs font-semibold text-slate-600 tabular-nums">
-              <Shield className="w-4 h-4 text-[#B45309]" />
-              <span>
-                {shields.filter((s) => s.unlocked).length}/4{' '}
-                {lang === 'hi' ? 'बैज प्राप्त' : 'Badges Unlocked'}
-              </span>
-            </div>
-          </div>
-
-          <span className="text-xs font-bold text-[#0D5C63] tabular-nums">
-            {lang === 'hi' ? `आपकी रैंक #${myEntry.liveRank}` : `Your Rank #${myEntry.liveRank}`}
+    <section className="max-w-5xl mx-auto px-3.5 @xl:px-6 pt-3 pb-8 space-y-4">
+      {/* Compact Stats + Team Dashboard Trigger */}
+      <div className="rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-3.5">
+          <span className="text-xs font-bold text-[#D97706] flex items-center gap-1 tabular-nums">
+            <Flame className="w-4 h-4 fill-[#F59E0B] text-[#D97706]" />
+            {streakDays}d
+          </span>
+          <span className="text-xs font-bold text-[#0D5C63] flex items-center gap-1 tabular-nums">
+            <Zap className="w-3.5 h-3.5 fill-[#0D5C63]" />
+            {xp} {lang === 'hi' ? 'अंक' : 'XP'}
+          </span>
+          <span className="text-xs font-bold text-[#15803D] flex items-center gap-1 tabular-nums">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            {totalWeeksDone} {lang === 'hi' ? 'सप्ताह' : 'wks'}
+          </span>
+          <span className="text-xs font-bold text-slate-700 tabular-nums">
+            {lang === 'hi' ? `रैंक #${myEntry.liveRank}` : `Rank #${myEntry.liveRank}`}
           </span>
         </div>
+
+        <button
+          type="button"
+          onClick={onOpenTeamDashboard}
+          className="min-h-[34px] px-2.5 py-1 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-[11px] font-bold text-[#0D5C63] flex items-center gap-1 cursor-pointer"
+        >
+          <Activity className="w-3.5 h-3.5" />
+          <span>{lang === 'hi' ? 'टीम डैशबोर्ड' : 'Team Dashboard'}</span>
+        </button>
       </div>
 
-      <section className="max-w-6xl mx-auto px-3.5 @xl:px-6 py-4 @3xl:py-8 space-y-5 @xl:space-y-6">
-        {/* Header + Segmented View Switch */}
-        <div className="flex flex-col @3xl:flex-row @3xl:items-end justify-between gap-4">
-          <div className="space-y-1.5 max-w-2xl">
-            <p className="text-xs font-semibold text-[#0D5C63]">
-              {lang === 'hi'
-                ? 'शिक्षक समुदाय · लीडरबोर्ड, बैज और अनुभव'
-                : 'Teacher Community · Leaderboard, Badges & Stories'}
-            </p>
-            <h1 className="text-xl @xl:text-3xl font-bold text-slate-900 text-balance">
-              {lang === 'hi'
-                ? 'ब्लॉक लीडरबोर्ड, आपके बैज और साथियों के अनुभव'
-                : 'Block leaderboard, earned shields & teacher stories'}
-            </h1>
-            <p className="text-sm text-slate-600">
-              {lang === 'hi'
-                ? 'सप्ताह 1–4 पूरा करें और अपनी आवाज़ में समाधान जोड़ें — आपका हर प्रयास आस-पास के स्कूलों की मदद करता है।'
-                : 'Complete Weeks 1–4 and share voice solutions—every point reflects real classroom impact.'}
-            </p>
+      {/* Sub-tabs: Leaderboard vs Stories */}
+      <div
+        role="tablist"
+        aria-label={lang === 'hi' ? 'समुदाय दृश्य' : 'Community Views'}
+        className="grid grid-cols-2 p-1 bg-slate-200/75 rounded-xl max-w-md"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'recognition'}
+          onClick={() => handleTabChange('recognition')}
+          className={`min-h-[40px] px-3 py-1.5 text-xs @xl:text-sm font-bold rounded-lg cursor-pointer ${
+            activeTab === 'recognition' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'
+          }`}
+        >
+          {lang === 'hi' ? 'ब्लॉक लीडरबोर्ड' : 'Block Leaderboard'}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'feed'}
+          onClick={() => handleTabChange('feed')}
+          className={`min-h-[40px] px-3 py-1.5 text-xs @xl:text-sm font-bold rounded-lg cursor-pointer ${
+            activeTab === 'feed' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'
+          }`}
+        >
+          {lang === 'hi' ? `साथी आवाज़ें (${stories.length})` : `Peer Stories (${stories.length})`}
+        </button>
+      </div>
+
+      {activeTab === 'recognition' ? (
+        <div className="space-y-4">
+          {/* Gamified Tier & Rank Motivation Banner */}
+          <div className="rounded-2xl bg-gradient-to-br from-[#0D5C63] via-[#0E6971] to-[#114B5F] text-white p-4 @xl:p-5 space-y-3 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-[11px] font-bold text-amber-300 uppercase tracking-wide">
+                  {getTeacherTier(xp, lang)} · {lang === 'hi' ? `रैंक #${myEntry.liveRank}` : `Rank #${myEntry.liveRank}`}
+                </p>
+                <h2 className="text-base @xl:text-lg font-extrabold flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-amber-300 shrink-0" />
+                  <span>
+                    {personAbove
+                      ? lang === 'hi'
+                        ? `${personAbove.teacherName.hi} से आगे बढ़ने के लिए केवल ${xpNeededForNext} XP!`
+                        : `Only ${xpNeededForNext} XP to pass ${personAbove.teacherName.en}!`
+                      : lang === 'hi'
+                      ? 'आप ब्लॉक लीडरबोर्ड में #1 पर हैं!'
+                      : 'You lead #1 in your block leaderboard!'}
+                  </span>
+                </h2>
+              </div>
+              <Award className="w-8 h-8 text-amber-300 shrink-0" />
+            </div>
+
+            <div className="space-y-1">
+              <div className="h-2.5 w-full rounded-full bg-black/25 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-amber-300 transition-all duration-300"
+                  style={{ width: `${rankProgressPct}%` }}
+                />
+              </div>
+              <p className="text-[11px] text-white/85 flex items-center justify-between">
+                <span>
+                  {lang === 'hi'
+                    ? 'हर सप्ताह एक्शन प्लान = +25 XP · समस्या हल = +50 XP'
+                    : 'Each weekly plan = +25 XP · Solving theme = +50 XP'}
+                </span>
+                <span className="font-bold tabular-nums">{xp} XP</span>
+              </p>
+            </div>
           </div>
 
-          <div
-            role="tablist"
-            aria-label={lang === 'hi' ? 'समुदाय दृश्य' : 'Community Views'}
-            className="inline-flex items-center gap-1 p-1 bg-slate-200/75 rounded-xl self-start @3xl:self-auto"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'recognition'}
-              onClick={() => handleTabChange('recognition')}
-              className={`min-h-[40px] px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                activeTab === 'recognition'
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              {lang === 'hi' ? 'लीडरबोर्ड व बैज' : 'Leaderboard & Badges'}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'feed'}
-              onClick={() => handleTabChange('feed')}
-              className={`min-h-[40px] px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                activeTab === 'feed'
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              {lang === 'hi' ? 'अनुभव व धन्यवाद' : 'Stories & Thanks'}
-            </button>
+          {/* Elevated Top-3 Podium Showcase */}
+          {podiumFirst && podiumSecond && podiumThird && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-extrabold text-slate-900">
+                  {lang === 'hi' ? 'ब्लॉक के शीर्ष 3 मार्गदर्शक' : 'Top 3 Block Trailblazers'}
+                </h3>
+                <span className="text-[11px] font-semibold text-slate-500">
+                  {lang === 'hi' ? 'साप्ताहिक गति' : 'Live Standings'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 sm:gap-3 items-end pt-2">
+                {/* #2 Left */}
+                <PodiumCard entry={podiumSecond} rank={2} lang={lang} />
+                {/* #1 Center Elevated Gold */}
+                <PodiumCard entry={podiumFirst} rank={1} lang={lang} />
+                {/* #3 Right */}
+                <PodiumCard entry={podiumThird} rank={3} lang={lang} />
+              </div>
+            </div>
+          )}
+
+          {/* Live Firebase Cloud Sync Bar */}
+          <div className="rounded-xl border border-[#B6D4D6] bg-[#EEF6F6] px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <Cloud className="w-4 h-4 text-[#0D5C63] shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-[#0D5C63] truncate">
+                  {cloudUser
+                    ? lang === 'hi'
+                      ? `Firebase लाइव जुड़ा है (${cloudUser.email})`
+                      : `Firebase live sync active (${cloudUser.email})`
+                    : lang === 'hi'
+                    ? 'अपना स्कोर Firebase पर सुरक्षित व लाइव जोड़ें'
+                    : 'Connect Firebase to save XP & join live leaderboard'}
+                </p>
+              </div>
+            </div>
+
+            {cloudUser ? (
+              <button
+                type="button"
+                onClick={onRefreshCloudLeaderboard}
+                className="min-h-[36px] px-3 py-1 rounded-lg bg-white border border-[#0D5C63]/30 text-xs font-bold text-[#0D5C63] flex items-center gap-1.5 cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${cloudSyncing ? 'animate-spin' : ''}`} />
+                <span>{lang === 'hi' ? 'रिफ्रेश' : 'Refresh'}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={connectingFirebase}
+                onClick={() => void handleConnectFirebase()}
+                className="min-h-[36px] px-3 py-1 rounded-lg bg-[#0D5C63] hover:bg-[#09474D] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>
+                  {connectingFirebase
+                    ? lang === 'hi'
+                      ? 'जुड़ रहा है...'
+                      : 'Connecting...'
+                    : lang === 'hi'
+                    ? 'Firebase से जुड़ें'
+                    : 'Connect Firebase'}
+                </span>
+              </button>
+            )}
           </div>
-        </div>
 
-        {activeTab === 'feed' ? (
-          <div className="grid grid-cols-1 @5xl:grid-cols-12 gap-5 items-start">
-            {/* Stories Feed */}
-            <div className="@5xl:col-span-8 space-y-4">
-              {stories.map((story) => {
-                const isApplauded = applaudedIds.includes(story.id);
-                const isLoadingVoice = loadingAudioId === `story-${story.id}`;
-                const isPlaying = speakingId === `story-${story.id}`;
+          {/* Remaining Standings (#4+ plus always show current user if #1-3) */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900">
+                {lang === 'hi' ? 'अन्य सक्रिय साथी शिक्षक' : 'Block Teacher Standings'}
+              </h3>
+              <span className="text-[11px] text-slate-500 tabular-nums">
+                {combinedLeaderboard.length} {lang === 'hi' ? 'शिक्षक' : 'teachers'}
+              </span>
+            </div>
 
-                return (
-                  <article
-                    key={story.id}
-                    className="rounded-2xl border border-slate-200 bg-white p-4 @xl:p-6 space-y-4"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <img
-                          src={story.avatarUrl}
-                          alt={story.teacherName[lang]}
-                          referrerPolicy="no-referrer"
-                          className="w-11 h-11 rounded-full object-cover border border-slate-200 shrink-0"
-                        />
-                        <div className="min-w-0">
-                          <p className="text-sm font-bold text-slate-900 truncate">
-                            {story.teacherName[lang]}
-                          </p>
-                          <p className="text-xs text-slate-500 truncate">
-                            {story.blockDistrict[lang]} · {story.themeLabel[lang]} · {story.timeAgo[lang]}
-                          </p>
-                        </div>
-                      </div>
+            {(remainingRankings.length > 0 ? remainingRankings : combinedLeaderboard).map((entry) => {
+              const isCheered = cheeredLeaderIds.includes(entry.id);
+              return (
+                <div
+                  key={entry.id}
+                  className={`rounded-xl border p-3 flex items-center justify-between gap-2.5 ${
+                    entry.isCurrentUser
+                      ? 'border-2 border-[#0D5C63] bg-[#EEF6F6]'
+                      : 'border-slate-200 bg-white'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span
+                      className={`w-7 h-7 rounded-lg text-xs font-extrabold flex items-center justify-center shrink-0 tabular-nums ${
+                        entry.isCurrentUser
+                          ? 'bg-[#0D5C63] text-white'
+                          : 'bg-slate-100 text-slate-700'
+                      }`}
+                    >
+                      {entry.liveRank}
+                    </span>
 
+                    <img
+                      src={entry.avatarUrl}
+                      alt={entry.teacherName[lang]}
+                      referrerPolicy="no-referrer"
+                      className="w-9 h-9 rounded-full object-cover border border-slate-200 shrink-0"
+                    />
+
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-slate-900 truncate">
+                        {entry.teacherName[lang]}{' '}
+                        {entry.isCurrentUser ? (lang === 'hi' ? '(आप)' : '(You)') : ''}
+                      </p>
+                      <p className="text-[11px] text-slate-500 truncate">
+                        {entry.schoolAndBlock[lang]} · {entry.weeksCompleted}{' '}
+                        {lang === 'hi' ? 'सप्ताह' : 'wks'} · 🔥{entry.streakDays}d
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs font-extrabold text-[#0D5C63] tabular-nums">
+                      {entry.xp} XP
+                    </span>
+
+                    {!entry.isCurrentUser && (
                       <button
                         type="button"
                         onClick={() =>
-                          onSpeak(
-                            `story-${story.id}`,
-                            `${story.headline[lang]}. ${story.body[lang]}`,
-                            story.avatarUrl.includes('rajesh') ? 'male' : 'female'
+                          setCheeredLeaderIds((prev) =>
+                            prev.includes(entry.id)
+                              ? prev.filter((x) => x !== entry.id)
+                              : [...prev, entry.id]
                           )
                         }
-                        aria-label={UI_COPY.listen[lang]}
-                        className="min-h-[40px] min-w-[40px] px-3 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium flex items-center gap-1.5 cursor-pointer shrink-0"
-                      >
-                        {isLoadingVoice ? (
-                          <Loader2 className="w-4 h-4 text-[#0D5C63] animate-spin" />
-                        ) : isPlaying ? (
-                          <VolumeX className="w-4 h-4 text-[#0D5C63]" />
-                        ) : (
-                          <Volume2 className="w-4 h-4 text-[#0D5C63]" />
-                        )}
-                        <span className="hidden sm:inline">
-                          {isLoadingVoice
-                            ? lang === 'hi'
-                              ? 'आवाज़ तैयार...'
-                              : 'Loading...'
-                            : isPlaying
-                            ? UI_COPY.stopListening[lang]
-                            : UI_COPY.listen[lang]}
-                        </span>
-                      </button>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
-                        {story.headline[lang]}
-                      </h2>
-                      <p className="text-sm text-slate-700 leading-relaxed">{story.body[lang]}</p>
-                    </div>
-
-                    <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        {story.hasVoice && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onSpeak(
-                                `story-${story.id}`,
-                                story.body[lang],
-                                story.avatarUrl.includes('rajesh') ? 'male' : 'female'
-                              )
-                            }
-                            className={`min-h-[40px] px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 cursor-pointer ${
-                              isPlaying
-                                ? 'bg-[#0D5C63] text-white'
-                                : 'bg-slate-100 hover:bg-slate-200 text-slate-800'
-                            }`}
-                          >
-                            {isLoadingVoice ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : isPlaying ? (
-                              <Pause className="w-3.5 h-3.5" />
-                            ) : (
-                              <Play className="w-3.5 h-3.5" />
-                            )}
-                            <span className="tabular-nums">
-                              {isLoadingVoice
-                                ? lang === 'hi'
-                                  ? 'आवाज़ तैयार...'
-                                  : 'Loading...'
-                                : `${lang === 'hi' ? 'सुनें' : 'Play'} (${
-                                    story.audioDurationSec ?? 30
-                                  }s)`}
-                            </span>
-                          </button>
-                        )}
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => onToggleApplause(story.id)}
-                        className={`min-h-[40px] px-3.5 py-2 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer tabular-nums ${
-                          isApplauded
-                            ? 'border-[#B45309] bg-amber-50 text-[#92400E]'
-                            : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                        aria-label={lang === 'hi' ? 'सराहें' : 'Cheer'}
+                        className={`min-h-[36px] px-2.5 rounded-lg border text-xs font-semibold flex items-center gap-1 cursor-pointer ${
+                          isCheered
+                            ? 'border-amber-300 bg-amber-50 text-[#B45309]'
+                            : 'border-slate-200 text-slate-600'
                         }`}
                       >
-                        <Heart className={`w-3.5 h-3.5 ${isApplauded ? 'fill-current' : ''}`} />
-                        <span>
-                          {lang === 'hi' ? 'धन्यवाद' : 'Thanks'} ·{' '}
-                          {story.applauseCount + (isApplauded ? 1 : 0)}
-                        </span>
+                        <Heart className={`w-3.5 h-3.5 ${isCheered ? 'fill-current' : ''}`} />
                       </button>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-
-            {/* Right Rail: Gratitude & Warm Impact Summary */}
-            <aside className="@5xl:col-span-4 space-y-4">
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 @xl:p-5 space-y-4">
-                <div className="flex items-center gap-2.5">
-                  <Award className="w-5 h-5 text-[#B45309]" />
-                  <h2 className="text-base font-bold text-slate-900">
-                    {lang === 'hi' ? 'आपका योगदान और पहुँच' : 'Your Impact & Reach'}
-                  </h2>
-                </div>
-                <p className="text-sm text-slate-600">
-                  {lang === 'hi'
-                    ? 'जब आप 4-सप्ताह पथ पूरा करते हैं या आवाज़ में तरीका साझा करते हैं, तो अन्य शिक्षक धन्यवाद भेजते हैं।'
-                    : 'As you complete 4-week paths and share voice solutions, nearby teachers try your ideas and thank you.'}
-                </p>
-
-                <div className="grid grid-cols-2 gap-3 pt-1">
-                  <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
-                    <div className="text-xs text-slate-500">
-                      {lang === 'hi' ? 'कुल अंक (XP)' : 'Total Points'}
-                    </div>
-                    <div className="text-xl font-bold text-[#0D5C63] tabular-nums mt-0.5">
-                      {xp}
-                    </div>
-                  </div>
-                  <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
-                    <div className="text-xs text-slate-500">
-                      {lang === 'hi' ? 'सप्ताह पूरे' : 'Weeks Done'}
-                    </div>
-                    <div className="text-xl font-bold text-slate-900 tabular-nums mt-0.5">
-                      {totalWeeksDone}
-                    </div>
-                  </div>
-                  <div className="rounded-xl bg-amber-50/70 border border-amber-200 p-3">
-                    <div className="text-xs text-[#92400E]">
-                      {lang === 'hi' ? 'धन्यवाद संदेश' : 'Thank-you Notes'}
-                    </div>
-                    <div className="text-xl font-bold text-slate-900 tabular-nums mt-0.5">
-                      {totalThanksReceived}
-                    </div>
-                  </div>
-                  <div className="rounded-xl bg-[#EEF6F6] border border-[#B6D4D6] p-3">
-                    <div className="text-xs text-[#0D5C63]">
-                      {lang === 'hi' ? 'स्कूलों ने आज़माया' : 'Schools Reached'}
-                    </div>
-                    <div className="text-xl font-bold text-slate-900 tabular-nums mt-0.5">
-                      {schoolsReached}
-                    </div>
+                    )}
                   </div>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleTabChange('recognition')}
-                  className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold cursor-pointer transition-colors"
-                >
-                  {lang === 'hi' ? 'लीडरबोर्ड व बैज देखें' : 'View Leaderboard & Badges'}
-                </button>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-3">
-                <h3 className="text-sm font-bold text-slate-900">
-                  {lang === 'hi' ? 'क्या आप भी अपनी बात जोड़ना चाहते हैं?' : 'Want to add your voice?'}
-                </h3>
-                <p className="text-xs text-slate-600">
-                  {lang === 'hi'
-                    ? 'कक्षा में आज आप जिस बात पर काम कर रहे हैं, उसे साझा करें (+30 अंक)।'
-                    : 'Share what you are working on in your classroom right now (+30 XP).'}
-                </p>
-                <button
-                  type="button"
-                  onClick={onGoToShare}
-                  className="w-full min-h-[44px] px-4 py-2 rounded-xl border border-[#0D5C63] text-[#0D5C63] hover:bg-[#EEF6F6] text-sm font-semibold cursor-pointer transition-colors"
-                >
-                  {lang === 'hi' ? 'अपनी बात साझा करें (+30 अंक)' : 'Share what you need (+30 XP)'}
-                </button>
-              </div>
-            </aside>
+              );
+            })}
           </div>
-        ) : (
-          /* CELEBRATORY MOTIVATING LEADERBOARD + SHIELDS */
-          <div className="grid grid-cols-1 @5xl:grid-cols-12 gap-5 @xl:gap-6 items-start">
-            {/* Left Column: Motivating Leaderboard (Top-3 Podium + Next Rank Goal + Full List) */}
-            <div className="@5xl:col-span-7 space-y-5">
-              {/* Personal Motivation & Next Milestone Card */}
-              <div className="rounded-2xl border-2 border-[#B6D4D6] bg-gradient-to-br from-[#0D5C63] to-[#083F44] text-white p-4 @xl:p-6 space-y-4 shadow-sm">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <p className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>
-                        {lang === 'hi'
-                          ? `आपकी वर्तमान स्थिति · रैंक #${myEntry.liveRank}`
-                          : `YOUR LIVE STANDING · RANK #${myEntry.liveRank}`}
-                      </span>
-                    </p>
-                    <h2 className="text-lg @xl:text-xl font-bold leading-snug">
-                      {personAbove
-                        ? lang === 'hi'
-                          ? `${personAbove.teacherName.hi} (#${personAbove.liveRank}) से आगे बढ़ने के लिए केवल ${xpNeededForNext} अंक और!`
-                          : `Only ${xpNeededForNext} XP to pass ${personAbove.teacherName.en} (#${personAbove.liveRank})!`
-                        : lang === 'hi'
-                        ? 'शानदार! आप अपने ब्लॉक लीडरबोर्ड में पहले स्थान पर हैं!'
-                        : 'Amazing! You are #1 on your Block Leaderboard!'}
-                    </h2>
-                  </div>
 
-                  <div className="rounded-xl bg-white/15 px-3.5 py-2 text-right shrink-0">
-                    <div className="text-[11px] text-white/80">
-                      {lang === 'hi' ? 'आपके अंक' : 'Your XP'}
-                    </div>
-                    <div className="text-xl font-extrabold tabular-nums text-amber-300">
-                      {xp}
-                    </div>
-                  </div>
-                </div>
+          {/* Expand-Collapsible Motivation Poll */}
+          <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowPoll((v) => !v)}
+              aria-expanded={showPoll}
+              className="w-full px-4 py-3 flex items-center justify-between gap-2 text-left hover:bg-slate-50 cursor-pointer"
+            >
+              <span className="text-xs font-bold text-slate-800">
+                {lang === 'hi'
+                  ? 'क्या यह सम्मान सूची आपको प्रेरित करती है? (राय दें)'
+                  : 'Does this block leaderboard motivate you? (Quick feedback)'}
+              </span>
+              <ChevronDown
+                className={`w-4 h-4 text-slate-500 transition-transform ${
+                  showPoll ? 'rotate-180' : ''
+                }`}
+              />
+            </button>
 
-                {/* Progress Bar toward Next Rank */}
-                <div className="space-y-1.5">
-                  <div className="h-3 w-full rounded-full bg-white/20 overflow-hidden">
-                    <div
-                      className="h-full bg-[#FACC15] rounded-full transition-all duration-500"
-                      style={{ width: `${progressToNextPct}%` }}
+            {showPoll && (
+              <div className="px-4 pb-4 pt-1 flex flex-wrap gap-2 border-t border-slate-100">
+                {[
+                  { id: 'yes' as const, hi: 'हाँ, बहुत', en: 'Yes, a lot' },
+                  { id: 'somewhat' as const, hi: 'थोड़ा', en: 'Somewhat' },
+                  { id: 'no' as const, hi: 'ज़रूरी नहीं', en: 'Not needed' },
+                ].map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => {
+                      setBadgeSentiment(opt.id);
+                      onSubmitFeedbackSentiment(opt.id);
+                    }}
+                    className={`min-h-[38px] px-3.5 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer ${
+                      badgeSentiment === opt.id
+                        ? 'border-[#0D5C63] bg-[#0D5C63] text-white'
+                        : 'border-slate-300 text-slate-700'
+                    }`}
+                  >
+                    {opt[lang]}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* Peer Voice Stories Feed */
+        <div className="space-y-3">
+          {stories.map((story) => {
+            const isApplauded = applaudedIds.includes(story.id);
+            const isLoadingVoice = loadingAudioId === `story-${story.id}`;
+            const isPlaying = speakingId === `story-${story.id}`;
+
+            return (
+              <article
+                key={story.id}
+                className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3"
+              >
+                <div className="flex items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <img
+                      src={story.avatarUrl}
+                      alt={story.teacherName[lang]}
+                      referrerPolicy="no-referrer"
+                      className="w-10 h-10 rounded-full object-cover border border-slate-200 shrink-0"
                     />
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-slate-900 truncate">
+                        {story.teacherName[lang]}
+                      </p>
+                      <p className="text-[11px] text-slate-500 truncate">
+                        {story.blockDistrict[lang]} · {story.timeAgo[lang]}
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-xs text-white/85">
-                    {lang === 'hi'
-                      ? 'सप्ताह पूरा करें (+25 अंक) या अपना तरीका आवाज़ में साझा करें (+50 अंक) — हर कदम से दूसरे शिक्षकों को मदद मिलती है।'
-                      : 'Complete a week (+25 XP) or share a voice solution (+50 XP) to rise while helping peers.'}
-                  </p>
-                </div>
 
-                <div className="flex flex-wrap gap-2.5 pt-1">
                   <button
                     type="button"
-                    onClick={onGoToPlan}
-                    className="min-h-[44px] px-4 py-2 rounded-xl bg-[#16A34A] hover:bg-[#15803D] text-white text-xs @xl:text-sm font-bold border-b-4 border-[#14532D] active:translate-y-[2px] active:border-b-2 flex items-center gap-1.5 cursor-pointer"
+                    onClick={() =>
+                      onSpeak(
+                        `story-${story.id}`,
+                        `${story.headline[lang]}. ${story.body[lang]}`,
+                        story.avatarUrl.includes('rajesh') ? 'male' : 'female'
+                      )
+                    }
+                    className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                      isPlaying ? 'bg-[#0D5C63] text-white' : 'bg-[#EEF6F6] text-[#0D5C63]'
+                    }`}
                   >
-                    <span>{lang === 'hi' ? 'अगला सप्ताह पूरा करें (+25 अंक)' : 'Complete a Week (+25 XP)'}</span>
-                    <ArrowRight className="w-4 h-4" />
+                    {isLoadingVoice ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : isPlaying ? (
+                      <Pause className="w-3.5 h-3.5" />
+                    ) : (
+                      <Play className="w-3.5 h-3.5" />
+                    )}
+                    <span>
+                      {isPlaying
+                        ? lang === 'hi'
+                          ? 'रोकें'
+                          : 'Stop'
+                        : `${lang === 'hi' ? 'सुनें' : 'Listen'} (${story.audioDurationSec ?? 30}s)`}
+                    </span>
                   </button>
+                </div>
+
+                <h2 className="text-sm @xl:text-base font-bold text-slate-900">
+                  {story.headline[lang]}
+                </h2>
+                <p className="text-xs @xl:text-sm text-slate-600 leading-relaxed">{story.body[lang]}</p>
+
+                <div className="pt-2 border-t border-slate-100 flex justify-end">
                   <button
                     type="button"
-                    onClick={onGoToShare}
-                    className="min-h-[44px] px-4 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs @xl:text-sm font-semibold flex items-center gap-1.5 cursor-pointer"
+                    onClick={() => onToggleApplause(story.id)}
+                    className={`min-h-[38px] px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 cursor-pointer tabular-nums ${
+                      isApplauded
+                        ? 'border-amber-300 bg-amber-50 text-[#92400E]'
+                        : 'border-slate-200 text-slate-700'
+                    }`}
                   >
-                    <Mic className="w-4 h-4" />
-                    <span>{lang === 'hi' ? 'बात साझा करें (+30 अंक)' : 'Share Note (+30 XP)'}</span>
+                    <Heart className={`w-3.5 h-3.5 ${isApplauded ? 'fill-current' : ''}`} />
+                    <span>
+                      {lang === 'hi' ? 'धन्यवाद' : 'Thanks'} ·{' '}
+                      {story.applauseCount + (isApplauded ? 1 : 0)}
+                    </span>
                   </button>
                 </div>
-              </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
 
-              {/* Top 3 Celebratory Podium */}
-              <div className="rounded-2xl border border-amber-200/80 bg-gradient-to-b from-amber-50/90 via-white to-white p-4 @xl:p-6 space-y-5">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <h2 className="text-base @xl:text-lg font-bold text-slate-900">
-                      {lang === 'hi'
-                        ? 'प्रमुख सहयोगी शिक्षक (शीर्ष 3)'
-                        : 'Top Peer Mentors (Top 3)'}
-                    </h2>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      {lang === 'hi'
-                        ? 'जिन शिक्षकों के उपाय ज़्यादा स्कूलों के काम आए'
-                        : 'Teachers whose shared solutions helped the most schools'}
-                    </p>
-                  </div>
-                  <Trophy className="w-5 h-5 text-[#D97706] shrink-0" />
-                </div>
+interface PodiumCardProps {
+  entry: {
+    id: string;
+    isCurrentUser: boolean;
+    teacherName: { hi: string; en: string };
+    avatarUrl: string;
+    xp: number;
+    weeksCompleted: number;
+    streakDays: number;
+  };
+  rank: 1 | 2 | 3;
+  lang: Language;
+}
 
-                <div className="grid grid-cols-3 gap-2 @xl:gap-4 items-end pt-2">
-                  {podiumOrder.map((entry) => {
-                    const isFirst = entry.liveRank === 1;
-                    const isSecond = entry.liveRank === 2;
-                    return (
-                      <div
-                        key={entry.id}
-                        className={`rounded-2xl border p-2.5 @xl:p-4 text-center flex flex-col items-center transition-all ${
-                          isFirst
-                            ? 'bg-amber-50/90 border-amber-300 shadow-sm -translate-y-2'
-                            : isSecond
-                            ? 'bg-slate-50 border-slate-300'
-                            : 'bg-orange-50/50 border-orange-200'
-                        }`}
-                      >
-                        <div className="mb-1.5">
-                          {isFirst ? (
-                            <Crown className="w-5 h-5 text-[#D97706] fill-[#FBBF24] mx-auto" />
-                          ) : (
-                            <Medal
-                              className={`w-4 h-4 mx-auto ${
-                                isSecond ? 'text-slate-500' : 'text-amber-700'
-                              }`}
-                            />
-                          )}
-                        </div>
+function PodiumCard({ entry, rank, lang }: PodiumCardProps) {
+  const isFirst = rank === 1;
+  const ringClass =
+    rank === 1
+      ? 'border-amber-400 ring-2 ring-amber-200 bg-amber-50/60'
+      : rank === 2
+      ? 'border-slate-300 bg-slate-50/70'
+      : 'border-orange-200 bg-orange-50/40';
 
-                        <div className="relative">
-                          <img
-                            src={entry.avatarUrl}
-                            alt={entry.teacherName[lang]}
-                            referrerPolicy="no-referrer"
-                            className={`rounded-full object-cover border-2 ${
-                              isFirst
-                                ? 'w-14 h-14 @xl:w-16 @xl:h-16 border-[#F59E0B]'
-                                : 'w-11 h-11 @xl:w-13 @xl:h-13 border-slate-300'
-                            }`}
-                          />
-                          <span
-                            className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full text-[11px] font-extrabold text-white flex items-center justify-center tabular-nums ${
-                              isFirst
-                                ? 'bg-[#D97706]'
-                                : isSecond
-                                ? 'bg-slate-600'
-                                : 'bg-amber-800'
-                            }`}
-                          >
-                            {entry.liveRank}
-                          </span>
-                        </div>
-
-                        <p className="text-xs @xl:text-sm font-bold text-slate-900 mt-2.5 line-clamp-1">
-                          {entry.teacherName[lang]}
-                        </p>
-                        <p className="text-[10px] @xl:text-[11px] text-[#B45309] font-semibold line-clamp-1 mt-0.5">
-                          {entry.honorTitle[lang]}
-                        </p>
-
-                        <div className="mt-2 pt-2 border-t border-slate-200/70 w-full flex flex-col items-center gap-0.5">
-                          <span className="text-xs @xl:text-sm font-extrabold text-[#0D5C63] tabular-nums">
-                            {entry.xp} {lang === 'hi' ? 'अंक' : 'XP'}
-                          </span>
-                          <span className="text-[10px] text-slate-500 tabular-nums">
-                            {entry.teachersHelped} {lang === 'hi' ? 'धन्यवाद' : 'thanks'}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Complete Ranked List including Current User + Peer Cheer Button */}
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 @xl:p-6 space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-sm @xl:text-base font-bold text-slate-900">
-                    {lang === 'hi'
-                      ? 'पूरा ब्लॉक व ज़िला क्रम'
-                      : 'Full Block & District Standings'}
-                  </h3>
-                  <span className="text-[11px] text-slate-500">
-                    {lang === 'hi' ? 'उदाहरण + आपकी लाइव रैंक' : 'Sample peers + your live rank'}
-                  </span>
-                </div>
-
-                <div className="space-y-2.5">
-                  {combinedLeaderboard.map((entry) => {
-                    const isCheered = cheeredLeaderIds.includes(entry.id);
-                    return (
-                      <div
-                        key={entry.id}
-                        className={`rounded-xl border p-3 @xl:p-3.5 flex flex-wrap items-center justify-between gap-3 transition-colors ${
-                          entry.isCurrentUser
-                            ? 'border-[#0D5C63] bg-[#EEF6F6] ring-2 ring-[#0D5C63]/15'
-                            : 'border-slate-200 bg-white hover:bg-slate-50/70'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                          <span
-                            className={`w-7 h-7 rounded-lg text-xs font-extrabold flex items-center justify-center tabular-nums shrink-0 ${
-                              entry.liveRank === 1
-                                ? 'bg-amber-100 text-[#B45309]'
-                                : entry.isCurrentUser
-                                ? 'bg-[#0D5C63] text-white'
-                                : 'bg-slate-100 text-slate-700'
-                            }`}
-                          >
-                            {entry.liveRank}
-                          </span>
-
-                          <img
-                            src={entry.avatarUrl}
-                            alt={entry.teacherName[lang]}
-                            referrerPolicy="no-referrer"
-                            className="w-10 h-10 rounded-full object-cover border border-slate-200 shrink-0"
-                          />
-
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <p className="text-sm font-bold text-slate-900 truncate">
-                                {entry.teacherName[lang]}
-                              </p>
-                              {entry.isCurrentUser && (
-                                <span className="text-[11px] font-bold text-[#0D5C63] shrink-0">
-                                  ({lang === 'hi' ? 'आप' : 'You'})
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-xs text-slate-600 truncate">
-                              {entry.schoolAndBlock[lang]}
-                              {entry.district[lang] ? ` · ${entry.district[lang]}` : ''}
-                            </p>
-                            <p className="text-[11px] font-semibold text-[#B45309] mt-0.5">
-                              {entry.honorTitle[lang]} · {entry.weeksCompleted}{' '}
-                              {lang === 'hi' ? 'सप्ताह' : 'wks'} · {entry.streakDays}d 🔥
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2.5 shrink-0">
-                          <div className="text-right">
-                            <div className="text-sm font-extrabold text-[#0D5C63] tabular-nums">
-                              {entry.xp} {lang === 'hi' ? 'अंक' : 'XP'}
-                            </div>
-                            <div className="text-[11px] text-slate-500 tabular-nums">
-                              {entry.teachersHelped + (isCheered ? 1 : 0)}{' '}
-                              {lang === 'hi' ? 'सराहना' : 'cheers'}
-                            </div>
-                          </div>
-
-                          {!entry.isCurrentUser && (
-                            <button
-                              type="button"
-                              onClick={() => toggleCheer(entry.id)}
-                              aria-label={lang === 'hi' ? 'सराहें' : 'Cheer teacher'}
-                              className={`min-h-[38px] px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors ${
-                                isCheered
-                                  ? 'border-amber-300 bg-amber-50 text-[#B45309]'
-                                  : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
-                              }`}
-                            >
-                              <Heart className={`w-3.5 h-3.5 ${isCheered ? 'fill-current' : ''}`} />
-                              <span className="hidden sm:inline">
-                                {isCheered
-                                  ? lang === 'hi'
-                                    ? 'सराहा'
-                                    : 'Cheered'
-                                  : lang === 'hi'
-                                  ? 'सराहें'
-                                  : 'Cheer'}
-                              </span>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            {/* Right Column: Teacher's Own Honor Card + 4 Unlocked Shields */}
-            <div className="@5xl:col-span-5 rounded-2xl border border-slate-200 bg-white p-4 @xl:p-6 space-y-5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-[#B45309]">
-                    {lang === 'hi' ? 'आपका शिक्षक सम्मान कार्ड' : 'Your Teacher Recognition Card'}
-                  </p>
-                  <h2 className="text-xl font-bold text-slate-900">{teacherDisplayName}</h2>
-                  <p className="text-xs text-slate-500">
-                    {teacherDistrict} · {xp} {lang === 'hi' ? 'अंक' : 'XP'} ·{' '}
-                    {userSolutionsCount + userChallengesCount}{' '}
-                    {lang === 'hi' ? 'साझा अनुभव' : 'shares'}
-                  </p>
-                </div>
-                <div className="w-12 h-12 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0">
-                  <Award className="w-6 h-6 text-[#B45309]" />
-                </div>
-              </div>
-
-              <div className="space-y-3 pt-2 border-t border-slate-200">
-                <p className="text-sm font-semibold text-slate-900">
-                  {lang === 'hi' ? 'आपके सम्मान बैज (4)' : 'Your Honor Shields (4)'}
-                </p>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {shields.map((shield) => {
-                    const Icon = shield.icon;
-                    return (
-                      <div
-                        key={shield.id}
-                        className={`p-3.5 rounded-xl border transition-colors ${
-                          shield.unlocked
-                            ? 'border-amber-300 bg-amber-50/75'
-                            : 'border-slate-200 bg-slate-50 opacity-75'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-2 mb-1.5">
-                          <Icon
-                            className={`w-5 h-5 ${
-                              shield.unlocked ? 'text-[#B45309]' : 'text-slate-400'
-                            }`}
-                          />
-                          <span
-                            className={`text-[11px] font-bold ${
-                              shield.unlocked ? 'text-[#15803D]' : 'text-slate-500'
-                            }`}
-                          >
-                            {shield.unlocked
-                              ? lang === 'hi'
-                                ? 'प्राप्त ✓'
-                                : 'Earned ✓'
-                              : lang === 'hi'
-                              ? 'बाकी'
-                              : 'Locked'}
-                          </span>
-                        </div>
-                        <div className="text-sm font-bold text-slate-900">{shield.title[lang]}</div>
-                        <p className="text-xs text-slate-600 mt-0.5 leading-snug">
-                          {shield.desc[lang]}
-                        </p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Simple feedback prompt */}
-              <div className="pt-4 border-t border-slate-200 space-y-2.5">
-                <p className="text-xs font-semibold text-slate-800">
-                  {lang === 'hi'
-                    ? 'आपकी राय: क्या ब्लॉक या ज़िले में इस तरह का लीडरबोर्ड और सम्मान आपको प्रेरित करता है?'
-                    : 'Quick question: Does a block or district leaderboard like this motivate you?'}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { id: 'yes', hi: 'हाँ, बहुत प्रेरित करता है', en: 'Yes, motivating' },
-                    { id: 'somewhat', hi: 'थोड़ा-बहुत', en: 'Somewhat' },
-                    { id: 'no', hi: 'ज़्यादा ज़रूरी नहीं', en: 'Not needed' },
-                  ].map((opt) => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => setBadgeSentiment(opt.id)}
-                      className={`min-h-[38px] px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer transition-colors ${
-                        badgeSentiment === opt.id
-                          ? 'border-[#0D5C63] bg-[#0D5C63] text-white'
-                          : 'border-slate-300 bg-white hover:bg-slate-50 text-slate-700'
-                      }`}
-                    >
-                      {opt[lang]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+  return (
+    <div
+      className={`rounded-xl border p-2.5 sm:p-3 text-center flex flex-col items-center gap-1.5 ${ringClass} ${
+        isFirst ? 'pb-4 pt-3 shadow-sm' : ''
+      } ${entry.isCurrentUser ? 'ring-2 ring-[#0D5C63]' : ''}`}
+    >
+      <div className="flex items-center justify-center gap-1 text-xs font-extrabold">
+        {isFirst ? (
+          <Crown className="w-4 h-4 text-[#D97706]" />
+        ) : (
+          <Medal className={`w-4 h-4 ${rank === 2 ? 'text-slate-500' : 'text-[#B45309]'}`} />
         )}
-      </section>
+        <span className="tabular-nums text-slate-800">#{rank}</span>
+      </div>
+
+      <img
+        src={entry.avatarUrl}
+        alt={entry.teacherName[lang]}
+        referrerPolicy="no-referrer"
+        className={`rounded-full object-cover border-2 ${
+          isFirst
+            ? 'w-12 h-12 sm:w-14 sm:h-14 border-amber-400'
+            : 'w-10 h-10 sm:w-11 sm:h-11 border-white shadow-xs'
+        }`}
+      />
+
+      <div className="w-full min-w-0">
+        <p className="text-xs sm:text-sm font-extrabold text-slate-900 truncate">
+          {entry.teacherName[lang].split(' ')[0]}
+          {entry.isCurrentUser ? (lang === 'hi' ? ' (आप)' : ' (You)') : ''}
+        </p>
+        <p className="text-[11px] font-extrabold text-[#0D5C63] tabular-nums">{entry.xp} XP</p>
+        <p className="text-[10px] text-slate-500 tabular-nums">
+          ✓ {entry.weeksCompleted} {lang === 'hi' ? 'सप्ताह' : 'wks'} · 🔥{entry.streakDays}d
+        </p>
+      </div>
     </div>
   );
 }

@@ -1,0 +1,171 @@
+{
+  "entities": {
+    "UserPublicProfile": {
+      "title": "UserPublicProfile",
+      "description": "Public-safe teacher summary without PII.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "blockDistrict": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "xp": { "type": "integer" },
+        "streakDays": { "type": "integer" },
+        "solutionsCount": { "type": "integer" },
+        "weeksDoneCount": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid",
+        "displayName",
+        "blockDistrict",
+        "xp",
+        "streakDays",
+        "solutionsCount",
+        "weeksDoneCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "UserPrivateInfo": {
+      "title": "UserPrivateInfo",
+      "description": "Isolated PII record for teacher phone/email.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "phoneMasked": { "type": "string", "maxLength": 20 },
+        "email": { "type": "string", "format": "email", "maxLength": 160 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "updatedAt"]
+    },
+    "TeacherSolution": {
+      "title": "TeacherSolution",
+      "description": "Voice or text classroom solution shared via 'I solved this'.",
+      "type": "object",
+      "properties": {
+        "authorUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "authorName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "blockDistrict": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "themeId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "method": { "type": "string", "enum": ["voice", "text"] },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "transcript": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "durationSec": { "type": "integer" },
+        "helpfulCount": { "type": "integer" },
+        "isPublic": { "type": "boolean" },
+        "prototypeData": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "authorUid",
+        "authorName",
+        "blockDistrict",
+        "themeId",
+        "method",
+        "summary",
+        "transcript",
+        "durationSec",
+        "helpfulCount",
+        "isPublic",
+        "prototypeData",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "TelemetryEventRecord": {
+      "title": "TelemetryEventRecord",
+      "description": "Structured usage telemetry event for Team Dashboard analytics.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "sessionId": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "variant": { "type": "string", "enum": ["A", "B"] },
+        "eventType": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "screen": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "themeId": { "type": "string", "maxLength": 64 },
+        "lang": { "type": "string", "enum": ["hi", "en"] },
+        "prototypeData": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid",
+        "sessionId",
+        "variant",
+        "eventType",
+        "screen",
+        "lang",
+        "prototypeData",
+        "createdAt"
+      ]
+    },
+    "FeedbackNote": {
+      "title": "FeedbackNote",
+      "description": "Teacher feedback on recognition/leaderboard motivation.",
+      "type": "object",
+      "properties": {
+        "authorUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "sentiment": { "type": "string", "enum": ["yes", "somewhat", "no"] },
+        "note": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorUid", "sentiment", "createdAt"]
+    },
+    "PublicLeaderboardEntry": {
+      "title": "PublicLeaderboardEntry",
+      "description": "Public-safe gamified block leaderboard entry without PII.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "blockDistrict": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "xp": { "type": "integer" },
+        "streakDays": { "type": "integer" },
+        "weeksDoneCount": { "type": "integer" },
+        "solutionsCount": { "type": "integer" },
+        "isPublic": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid",
+        "displayName",
+        "blockDistrict",
+        "xp",
+        "streakDays",
+        "weeksDoneCount",
+        "solutionsCount",
+        "isPublic",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserPublicProfile" },
+      "description": "Public-safe teacher progression and summary."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivateInfo" },
+      "description": "Isolated teacher PII (email and masked phone)."
+    },
+    "/solutions/{solutionId}": {
+      "schema": { "$ref": "#/entities/TeacherSolution" },
+      "description": "Community voice and text classroom solutions."
+    },
+    "/telemetryEvents/{eventId}": {
+      "schema": { "$ref": "#/entities/TelemetryEventRecord" },
+      "description": "Team Dashboard analytics and sensing event stream."
+    },
+    "/feedbackNotes/{noteId}": {
+      "schema": { "$ref": "#/entities/FeedbackNote" },
+      "description": "Field study feedback responses from teachers and HMs."
+    },
+    "/leaderboard/{userId}": {
+      "schema": { "$ref": "#/entities/PublicLeaderboardEntry" },
+      "description": "Public-safe gamified block leaderboard standings."
+    }
+  }
+}

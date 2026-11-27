@@ -12,10 +12,130 @@ export const AVATAR_KAVITA = '/src/assets/images/teacher_avatar_kavita_179560667
 
 export const PROBLEM_THEMES: ProblemTheme[] = [
   {
+    id: 'private-school-shift',
+    size: 'large',
+    sourceType: 'mitra_school',
+    commonalityRank: 1,
+    title: {
+      hi: 'निजी स्कूलों की ओर बच्चों का जाना',
+      en: 'Students enrolling in private schools',
+    },
+    shortPrompt: {
+      hi: 'अभिभावकों का सरकारी स्कूल से भरोसा घटकर निजी स्कूल में दाखिला कराना',
+      en: 'Parents shifting students from government to private schools',
+    },
+    contextNote: {
+      hi: 'संस्कृति डेटा · नामांकन व भरोसा',
+      en: 'Sanskriti Insight · Enrollment & trust',
+    },
+    planIntro: {
+      hi: 'अभिभावक केवल इमारत नहीं, बल्कि बच्चों का बोलना, साफ़ दिनचर्या और शिक्षक का अपनापन देखकर स्कूल चुनते हैं। छोटे साप्ताहिक प्रदर्शन तुरंत भरोसा जगाते हैं।',
+      en: 'Parents choose schools when they see confident reading, neat daily routines, and warm teacher care. Small visible showcases rebuild trust fast.',
+    },
+    planSteps: [
+      {
+        stepNumber: 1,
+        title: { hi: 'शनिवार "पढ़ाई व अंग्रेज़ी शब्द" खुला प्रदर्शन', en: 'Saturday open reading & English word showcase' },
+        detail: {
+          hi: 'महीने में दो बार माता-पिता को 15 मिनट बुलाकर बच्चों से हिंदी कहानी पढ़वाएं और रोज़ के 5 अंग्रेज़ी शब्द बोलकर दिखाएं।',
+          en: 'Twice a month, invite parents for 15 minutes to watch children read Hindi stories aloud and speak 5 everyday English words.',
+        },
+        duration: { hi: '15 मिनट · शनिवार', en: '15 mins · Sat' },
+      },
+      {
+        stepNumber: 2,
+        title: { hi: 'गेट पर स्वागत और साफ़-सुथरी प्रार्थना सभा', en: 'Warm gate welcome & neat morning assembly' },
+        detail: {
+          hi: 'सुबह 10 मिनट गेट पर मुस्कुराकर स्वागत करें; प्रार्थना सभा में साफ़ नाखून, जूते व सामान्य ज्ञान प्रश्न का नियम शुरू करें।',
+          en: 'Greet students by name at the gate and run a crisp 15-minute assembly with news, neat uniform habits, and quick GK questions.',
+        },
+        duration: { hi: '15 मिनट / सुबह', en: '15 mins / morning' },
+      },
+      {
+        stepNumber: 3,
+        title: { hi: 'घर-घर संपर्क: सरकारी स्कूल के 4 मुफ्त लाभ बताएं', en: 'Home visits: share 4 free school benefits' },
+        detail: {
+          hi: 'प्रवेश के समय परिवारों को किताबें, मध्याह्न भोजन, DBT राशि और प्रशिक्षित शिक्षक के फायदे सम्मानपूर्वक समझाएं।',
+          en: 'Visit families before admissions to share free books, midday meals, DBT support, and qualified teachers—without criticizing parents.',
+        },
+        duration: { hi: 'सप्ताह 3 · संपर्क', en: 'Week 3 · Outreach' },
+      },
+      {
+        stepNumber: 4,
+        title: { hi: 'रुके व लौटे बच्चों की प्रगति अभिभावकों से साझा करें', en: 'Week 4: Track retained enrollments & share story' },
+        detail: {
+          hi: 'देखें कितने बच्चे निजी स्कूल जाने से रुके या वापस आए, और अपनी आवाज़ में बताएं किस बात से भरोसा बढ़ा।',
+          en: 'Track how many children stayed or returned from private schools and record a voice note on what won parents over.',
+        },
+        duration: { hi: 'सप्ताह 4 · 15 मिनट', en: 'Week 4 · 15 mins' },
+      },
+    ],
+  },
+  {
+    id: 'dbt-scheme',
+    size: 'large',
+    sourceType: 'mitra_school',
+    commonalityRank: 2,
+    title: {
+      hi: 'DBT (प्रत्यक्ष लाभ अंतरण) योजना में देरी',
+      en: 'Direct Benefit Transfer (DBT) scheme',
+    },
+    shortPrompt: {
+      hi: 'आधार-बैंक सीडिंग अटकने से यूनिफ़ॉर्म व छात्रवृत्ति पैसा न आना',
+      en: 'Uniform, bag & scholarship DBT payouts delayed due to Aadhaar-bank seeding',
+    },
+    contextNote: {
+      hi: 'संस्कृति डेटा · DBT व सरकारी लाभ',
+      en: 'Sanskriti Insight · DBT & family benefits',
+    },
+    planIntro: {
+      hi: 'अक्सर पैसा आधार-NPCI मैपिंग या बंद खाते की वजह से अटकता है। स्कूल में BC सखी के साथ एक साझा कैंप दर्जनों परिवारों की समस्या एक दिन में सुलझा देता है।',
+      en: 'DBT payouts usually stall due to missing Aadhaar-NPCI seeding or dormant accounts. One school courtyard camp with the village BC Sakhi clears dozens of cases.',
+    },
+    planSteps: [
+      {
+        stepNumber: 1,
+        title: { hi: 'DBT पेंडिंग व अस्वीकृत खातों की अलग सूची बनाएं', en: 'Create a hamlet-wise pending DBT list' },
+        detail: {
+          hi: 'पोर्टल से उन बच्चों की सूची निकालें जिनका आधार सीडिंग या खाता सत्यापन अधूरा है, ताकि हर अभिभावक को बार-बार न दौड़ना पड़े।',
+          en: 'Pull one consolidated list of unseeded or rejected DBT accounts from the portal grouped by hamlet.',
+        },
+        duration: { hi: '20 मिनट', en: '20 mins' },
+      },
+      {
+        stepNumber: 2,
+        title: { hi: 'BC सखी या डाकघर से स्कूल में 1 घंटे का कैंप', en: 'Host a 1-hour BC Sakhi / Post Office camp' },
+        detail: {
+          hi: 'गाँव की बैंक सखी (BC सखी) या इंडिया पोस्ट पेमेंट्स बैंक प्रतिनिधि को स्कूल प्रांगण में बुलाकर माताओं के खाते आधार से जुड़वाएं।',
+          en: 'Invite the village BC Sakhi or India Post Payments Bank agent to school for 1 hour to complete mothers’ Aadhaar-NPCI seeding.',
+        },
+        duration: { hi: 'सप्ताह 2 · 1 घंटा', en: 'Week 2 · 1 hour' },
+      },
+      {
+        stepNumber: 3,
+        title: { hi: 'अभिभावकों को 3-बिंदु आसान जांच पर्ची भेजें', en: 'Send a simple 3-check parent slip home' },
+        detail: {
+          hi: 'माता-पिता को पर्ची पर 3 बातें लिखकर दें: माँ का आधार कॉपी, बैंक पासबुक और मोबाइल नंबर — ताकि कैंप में काम तुरंत हो।',
+          en: 'Send a 3-line slip: mother’s Aadhaar copy, active passbook, and phone number—so seeding finishes in one visit.',
+        },
+        duration: { hi: 'सप्ताह 3 · 10 मिनट', en: 'Week 3 · 10 mins' },
+      },
+      {
+        stepNumber: 4,
+        title: { hi: 'DBT राशि आने की पुष्टि व अनुभव साझा करें', en: 'Week 4: Confirm DBT payouts & share tip' },
+        detail: {
+          hi: 'कितने परिवारों के खाते में यूनिफ़ॉर्म/लाभ की राशि पहुँची इसकी पुष्टि करें और अपना आसान तरीका साथियों को सुनाएं।',
+          en: 'Confirm with families when uniform/DBT funds arrive and record your bank-camp tip by voice.',
+        },
+        duration: { hi: 'सप्ताह 4 · 15 मिनट', en: 'Week 4 · 15 mins' },
+      },
+    ],
+  },
+  {
     id: 'multi-age',
     size: 'large',
     sourceType: 'classroom_hypothesis',
-    commonalityRank: 1,
+    commonalityRank: 3,
     title: {
       hi: 'एक साथ कई कक्षाएँ और अलग-अलग स्तर',
       en: 'Multi-age & multi-level classrooms',
@@ -75,7 +195,7 @@ export const PROBLEM_THEMES: ProblemTheme[] = [
     id: 'irregular-attendance',
     size: 'large',
     sourceType: 'mitra_school',
-    commonalityRank: 2,
+    commonalityRank: 4,
     title: {
       hi: 'अनियमित उपस्थिति और मौसमी पलायन',
       en: 'Irregular attendance & seasonal migration',
@@ -135,7 +255,7 @@ export const PROBLEM_THEMES: ProblemTheme[] = [
     id: 'multilingual',
     size: 'large',
     sourceType: 'classroom_hypothesis',
-    commonalityRank: 3,
+    commonalityRank: 5,
     title: {
       hi: 'घर की बोली और स्कूल की हिंदी में अंतर',
       en: 'Multilingual classrooms & home dialect gap',
@@ -195,7 +315,7 @@ export const PROBLEM_THEMES: ProblemTheme[] = [
     id: 'foundational-fln',
     size: 'medium',
     sourceType: 'classroom_hypothesis',
-    commonalityRank: 4,
+    commonalityRank: 6,
     title: {
       hi: 'पढ़ने और बुनियादी गणित में पीछे रह गए बच्चे',
       en: 'Foundational reading & numeracy gaps',
@@ -255,7 +375,7 @@ export const PROBLEM_THEMES: ProblemTheme[] = [
     id: 'missing-docs',
     size: 'medium',
     sourceType: 'mitra_school',
-    commonalityRank: 5,
+    commonalityRank: 7,
     title: {
       hi: 'आधार या जन्म प्रमाणपत्र न होना',
       en: 'Missing Aadhaar or birth certificates',
@@ -315,7 +435,7 @@ export const PROBLEM_THEMES: ProblemTheme[] = [
     id: 'child-work',
     size: 'medium',
     sourceType: 'mitra_school',
-    commonalityRank: 6,
+    commonalityRank: 8,
     title: {
       hi: 'घर के काम या मज़दूरी में बच्चों का समय लगना',
       en: 'Children engaged in household chores or work',
@@ -375,7 +495,7 @@ export const PROBLEM_THEMES: ProblemTheme[] = [
     id: 'large-class',
     size: 'medium',
     sourceType: 'classroom_hypothesis',
-    commonalityRank: 7,
+    commonalityRank: 9,
     title: {
       hi: 'बड़ी कक्षा में हर बच्चे पर व्यक्तिगत ध्यान',
       en: 'Individual attention in large classes',
@@ -435,7 +555,7 @@ export const PROBLEM_THEMES: ProblemTheme[] = [
     id: 'parent-ptm',
     size: 'medium',
     sourceType: 'mitra_school',
-    commonalityRank: 8,
+    commonalityRank: 10,
     title: {
       hi: 'अभिभावक संवाद और बैठक में कम उपस्थिति',
       en: 'Low parent engagement & PTM turnout',
@@ -495,7 +615,7 @@ export const PROBLEM_THEMES: ProblemTheme[] = [
     id: 'tlm-shortage',
     size: 'compact',
     sourceType: 'classroom_hypothesis',
-    commonalityRank: 9,
+    commonalityRank: 11,
     title: {
       hi: 'पढ़ाने की सामग्री और कहानी की किताबों की कमी',
       en: 'Shortage of teaching aids & storybooks',
@@ -555,7 +675,7 @@ export const PROBLEM_THEMES: ProblemTheme[] = [
     id: 'girls-retention',
     size: 'compact',
     sourceType: 'mitra_school',
-    commonalityRank: 10,
+    commonalityRank: 12,
     title: {
       hi: 'लड़कियों की नियमित शिक्षा और सुरक्षित आवागमन',
       en: 'Girls’ retention & safe school commute',
@@ -615,7 +735,7 @@ export const PROBLEM_THEMES: ProblemTheme[] = [
     id: 'inclusive-support',
     size: 'compact',
     sourceType: 'classroom_hypothesis',
-    commonalityRank: 11,
+    commonalityRank: 13,
     title: {
       hi: 'विशेष ध्यान या धीमी गति से सीखने वाले बच्चे',
       en: 'Children needing inclusive learning support',
@@ -675,7 +795,7 @@ export const PROBLEM_THEMES: ProblemTheme[] = [
     id: 'ecce-readiness',
     size: 'medium',
     sourceType: 'mitra_school',
-    commonalityRank: 12,
+    commonalityRank: 14,
     title: {
       hi: 'नए बच्चों की बालवाटिका और स्कूल तैयारी',
       en: 'Balvatika & early school readiness',
@@ -735,7 +855,7 @@ export const PROBLEM_THEMES: ProblemTheme[] = [
     id: 'out-of-school-tracking',
     size: 'compact',
     sourceType: 'mitra_school',
-    commonalityRank: 13,
+    commonalityRank: 15,
     title: {
       hi: 'स्कूल से बाहर छूटे बच्चों की पहचान और वापसी',
       en: 'Out-of-school child tracking & re-enrollment',
@@ -795,7 +915,7 @@ export const PROBLEM_THEMES: ProblemTheme[] = [
     id: 'art-expression',
     size: 'compact',
     sourceType: 'classroom_hypothesis',
-    commonalityRank: 14,
+    commonalityRank: 16,
     title: {
       hi: 'चित्र, कहानी और बच्चों का आत्मविश्वास',
       en: 'Art, stories & student confidence',
@@ -855,7 +975,7 @@ export const PROBLEM_THEMES: ProblemTheme[] = [
     id: 'school-wash-infra',
     size: 'compact',
     sourceType: 'mitra_school',
-    commonalityRank: 15,
+    commonalityRank: 17,
     title: {
       hi: 'पीने का पानी, स्वच्छता और स्कूल माहौल सुधार',
       en: 'Clean water, sanitation & welcoming school upkeep',
@@ -914,6 +1034,40 @@ export const PROBLEM_THEMES: ProblemTheme[] = [
 ];
 
 export const INITIAL_PEER_SOLUTIONS: PeerSolution[] = [
+  {
+    id: 'sol-0a',
+    themeId: 'private-school-shift',
+    teacherName: { hi: 'सुनीता शर्मा', en: 'Sunita Sharma' },
+    blockDistrict: { hi: 'देवा ब्लॉक, बाराबंकी', en: 'Dewa Block, Barabanki' },
+    avatarUrl: AVATAR_SUNITA,
+    audioDurationSec: 41,
+    summary: {
+      hi: 'हर महीने माता-पिता के सामने बच्चों के अंग्रेज़ी शब्दों व पढ़ने के प्रदर्शन से 11 बच्चे वापस सरकारी स्कूल जुड़े',
+      en: 'Monthly parent reading & English-word showcases brought 11 children back from private schools',
+    },
+    transcript: {
+      hi: 'हमारे गाँव के कई अभिभावक सोचते थे कि प्राइवेट स्कूल में अंग्रेज़ी बेहतर होती है। हमने हर आखिरी शनिवार माता-पिता को बुलाकर बच्चों से 10 मिनट हिंदी कहानी और रोज़ के अंग्रेज़ी शब्द बोलकर दिखाए। साथ ही सुबह गेट पर स्वागत शुरू किया। इस सत्र में 11 बच्चे प्राइवेट से हमारे स्कूल लौट आए।',
+      en: 'Many parents assumed private schools taught better English. Every last Saturday we invited parents for 10 minutes to watch children read Hindi stories and speak daily English words, paired with warm morning gate greets. 11 children returned from private schools this term.',
+    },
+    helpfulCount: 27,
+  },
+  {
+    id: 'sol-0b',
+    themeId: 'dbt-scheme',
+    teacherName: { hi: 'राजेश कुमार वर्मा', en: 'Rajesh Kumar Verma' },
+    blockDistrict: { hi: 'सिधौली ब्लॉक, सीतापुर', en: 'Sidhauli Block, Sitapur' },
+    avatarUrl: AVATAR_RAJESH,
+    audioDurationSec: 36,
+    summary: {
+      hi: 'स्कूल में BC सखी के साथ 1 घंटे के कैंप से 24 बच्चों के DBT खाते एक दिन में चालू हुए',
+      en: 'A 1-hour school courtyard camp with the village BC Sakhi fixed 24 pending DBT accounts',
+    },
+    transcript: {
+      hi: 'हमारे स्कूल में 24 बच्चों का यूनिफ़ॉर्म DBT पैसा NPCI आधार सीडिंग न होने से रुका था। माता-पिता बैंक जाने में झिझकते थे। मैंने गाँव की BC सखी को शनिवार दोपहर 1 घंटे स्कूल बुलाया और सभी माताओं को 3 कागज़ की पर्ची भेजी। एक ही दिन में 24 खातों की सीडिंग पूरी हुई और अगले महीने पैसा आ गया।',
+      en: '24 students had DBT uniform payouts stuck due to pending NPCI Aadhaar seeding, and parents hesitated to visit bank branches. We invited the village BC Sakhi to school for 1 hour on Saturday after sending a 3-document slip home. All 24 accounts were seeded in one day.',
+    },
+    helpfulCount: 24,
+  },
   {
     id: 'sol-1',
     themeId: 'multi-age',
@@ -1002,6 +1156,48 @@ export const INITIAL_PEER_SOLUTIONS: PeerSolution[] = [
 ];
 
 export const INITIAL_COMMUNITY_STORIES: CommunityStory[] = [
+  {
+    id: 'story-0a',
+    teacherName: { hi: 'सुनीता शर्मा', en: 'Sunita Sharma' },
+    blockDistrict: { hi: 'देवा ब्लॉक, बाराबंकी', en: 'Dewa Block, Barabanki' },
+    avatarUrl: AVATAR_SUNITA,
+    themeId: 'private-school-shift',
+    themeLabel: { hi: 'निजी स्कूल पलायन रोकथाम', en: 'Private School Retention' },
+    storyType: 'solution',
+    headline: {
+      hi: 'शनिवार पढ़ाई प्रदर्शन और सुबह स्वागत से 11 बच्चे निजी स्कूल से वापस लौटे',
+      en: 'Saturday reading showcase & morning welcome brought 11 children back from private schools',
+    },
+    body: {
+      hi: 'जब अभिभावकों ने अपने बच्चों को मंच पर निडर होकर पढ़ते और अंग्रेज़ी शब्द बोलते देखा, तो सरकारी स्कूल पर उनका भरोसा तुरंत बढ़ा।',
+      en: 'When parents saw their children reading confidently and speaking everyday English words during Saturday gatherings, trust in our government school soared.',
+    },
+    timeAgo: { hi: '1 दिन पहले', en: '1 day ago' },
+    applauseCount: 34,
+    hasVoice: true,
+    audioDurationSec: 41,
+  },
+  {
+    id: 'story-0b',
+    teacherName: { hi: 'राजेश कुमार वर्मा', en: 'Rajesh Kumar Verma' },
+    blockDistrict: { hi: 'सिधौली ब्लॉक, सीतापुर', en: 'Sidhauli Block, Sitapur' },
+    avatarUrl: AVATAR_RAJESH,
+    themeId: 'dbt-scheme',
+    themeLabel: { hi: 'DBT योजना सहायता', en: 'DBT Scheme Support' },
+    storyType: 'plan_tried',
+    headline: {
+      hi: 'BC सखी कैंप लगाकर एक ही दिन में 24 परिवारों का अटका DBT लाभ शुरू कराया',
+      en: 'School BC Sakhi camp cleared 24 stalled family DBT payouts in a single day',
+    },
+    body: {
+      hi: 'आधार-बैंक सीडिंग की छोटी-सी सूची बनाकर गाँव की बैंक सखी को स्कूल बुलाने से परिवारों के चक्कर बचे और भरोसा बढ़ा।',
+      en: 'Listing pending Aadhaar-bank seeding cases and hosting the local BC Sakhi at school saved parents multiple bank trips.',
+    },
+    timeAgo: { hi: '3 दिन पहले', en: '3 days ago' },
+    applauseCount: 29,
+    hasVoice: true,
+    audioDurationSec: 36,
+  },
   {
     id: 'story-1',
     teacherName: { hi: 'कविता यादव', en: 'Kavita Yadav' },
@@ -1170,11 +1366,10 @@ export const VINDHYA_FIELD_QUESTIONS = [
 export const UI_COPY = {
   brandName: { hi: 'साथी', en: 'Saathi' },
   nav: {
-    welcome: { hi: 'शुरुआत', en: 'Home' },
-    map: { hi: 'विषय सूची', en: 'Themes' },
-    plan: { hi: '4-सप्ताह पथ', en: '4-Week Path' },
-    share: { hi: 'बात रखें', en: 'Share' },
-    community: { hi: 'समुदाय', en: 'Community' },
+    map: { hi: 'समस्याएँ', en: 'Problems' },
+    plan: { hi: 'कदम', en: 'Steps' },
+    share: { hi: 'आवाज़ / हल', en: 'Voice Hub' },
+    community: { hi: 'साथी व सम्मान', en: 'Community' },
   },
   langToggle: { hi: 'English', en: 'हिंदी' },
   listen: { hi: 'सुनें', en: 'Listen' },

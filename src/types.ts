@@ -82,6 +82,7 @@ export interface TeacherProfile {
   phone: string;
   name: string;
   blockDistrict: string;
+  role?: 'teacher' | 'hm';
   loggedInAt: string;
 }
 
@@ -92,8 +93,17 @@ export interface AssistantMessage {
   timestamp: string;
 }
 
+export interface WinMomentPayload {
+  themeId: string;
+  themeTitle: BilingualText;
+  solutionText: string;
+  method: 'quick_tap' | 'voice' | 'text';
+  xpEarned: number;
+}
+
 export interface TelemetryEvent {
   id: string;
+  sessionId?: string;
   timestamp: string;
   prototype_data: true;
   variant: AbVariant;
@@ -102,6 +112,8 @@ export interface TelemetryEvent {
     | 'variant_switched'
     | 'language_chosen'
     | 'language_switched'
+    | 'walkthrough_completed'
+    | 'walkthrough_skipped'
     | 'read_aloud_used'
     | 'login_completed'
     | 'tile_tapped'
@@ -110,6 +122,8 @@ export interface TelemetryEvent {
     | 'voice_button_tapped'
     | 'voice_recording_started'
     | 'voice_recording_completed'
+    | 'win_moment_triggered'
+    | 'whatsapp_share_clicked'
     | 'own_challenge_started'
     | 'own_challenge_completed'
     | 'feed_viewed'
@@ -128,6 +142,7 @@ export interface TelemetryState {
   initialLanguage: Language;
   currentLanguage: Language;
   languageSwitchCount: number;
+  walkthroughStatus: 'pending' | 'completed' | 'skipped';
   readAloudCount: number;
   mapEnteredAtMs: number | null;
   firstTileTappedId: string | null;
@@ -139,6 +154,8 @@ export interface TelemetryState {
   voiceButtonTappedCount: number;
   voiceRecordingStartedCount: number;
   voiceRecordingCompletedCount: number;
+  winMomentsCount: number;
+  whatsappSharesCount: number;
   ownChallengeStartedCount: number;
   ownChallengeCompletedCount: number;
   timeOnFeedMs: number;

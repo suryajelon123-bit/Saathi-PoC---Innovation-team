@@ -1,0 +1,328 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Default-Deny Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 1. Hardened Global Helpers
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isVerifiedUser() && (
+        request.auth.token.email == 'suryaaru918@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // 2. Entity Validation Helpers (Zero existing()/diff() calls inside)
+    function isValidUserPublicProfile(data) {
+      return data.keys().hasAll([
+          'uid', 'displayName', 'blockDistrict', 'xp',
+          'streakDays', 'solutionsCount', 'weeksDoneCount', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'displayName', 'blockDistrict', 'xp',
+          'streakDays', 'solutionsCount', 'weeksDoneCount', 'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80
+        && data.blockDistrict is string && data.blockDistrict.size() >= 1 && data.blockDistrict.size() <= 80
+        && data.xp is int && data.xp >= 0 && data.xp <= 100000
+        && data.streakDays is int && data.streakDays >= 0 && data.streakDays <= 3650
+        && data.solutionsCount is int && data.solutionsCount >= 0 && data.solutionsCount <= 10000
+        && data.weeksDoneCount is int && data.weeksDoneCount >= 0 && data.weeksDoneCount <= 1000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidUserPrivateInfo(data) {
+      return data.keys().hasAll(['uid', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'phoneMasked', 'email', 'updatedAt'])
+        && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128
+        && (!('phoneMasked' in data) || (data.phoneMasked is string && data.phoneMasked.size() <= 20))
+        && (!('email' in data) || (data.email is string && data.email.size() <= 160))
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidTeacherSolution(data) {
+      return data.keys().hasAll([
+          'authorUid', 'authorName', 'blockDistrict', 'themeId',
+          'method', 'summary', 'transcript', 'durationSec',
+          'helpfulCount', 'isPublic', 'prototypeData', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'authorUid', 'authorName', 'blockDistrict', 'themeId',
+          'method', 'summary', 'transcript', 'durationSec',
+          'helpfulCount', 'isPublic', 'prototypeData', 'createdAt', 'updatedAt'
+        ])
+        && data.authorUid is string && data.authorUid.size() >= 1 && data.authorUid.size() <= 128
+        && data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 80
+        && data.blockDistrict is string && data.blockDistrict.size() >= 1 && data.blockDistrict.size() <= 80
+        && data.themeId is string && data.themeId.size() >= 1 && data.themeId.size() <= 64
+        && (data.method == 'voice' || data.method == 'text')
+        && data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 200
+        && data.transcript is string && data.transcript.size() >= 1 && data.transcript.size() <= 1000
+        && data.durationSec is int && data.durationSec >= 0 && data.durationSec <= 600
+        && data.helpfulCount is int && data.helpfulCount >= 0 && data.helpfulCount <= 100000
+        && data.isPublic is bool
+        && data.prototypeData is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidTelemetryEvent(data) {
+      return data.keys().hasAll([
+          'uid', 'sessionId', 'variant', 'eventType',
+          'screen', 'lang', 'prototypeData', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'sessionId', 'variant', 'eventType',
+          'screen', 'themeId', 'lang', 'prototypeData', 'createdAt'
+        ])
+        && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128
+        && data.sessionId is string && data.sessionId.size() >= 1 && data.sessionId.size() <= 80
+        && (data.variant == 'A' || data.variant == 'B')
+        && data.eventType is string && data.eventType.size() >= 1 && data.eventType.size() <= 64
+        && data.screen is string && data.screen.size() >= 1 && data.screen.size() <= 32
+        && (!('themeId' in data) || (data.themeId is string && data.themeId.size() <= 64))
+        && (data.lang == 'hi' || data.lang == 'en')
+        && data.prototypeData is bool
+        && data.createdAt is timestamp;
+    }
+
+    function isValidFeedbackNote(data) {
+      return data.keys().hasAll(['authorUid', 'sentiment', 'createdAt'])
+        && data.keys().hasOnly(['authorUid', 'sentiment', 'note', 'createdAt'])
+        && data.authorUid is string && data.authorUid.size() >= 1 && data.authorUid.size() <= 128
+        && (data.sentiment == 'yes' || data.sentiment == 'somewhat' || data.sentiment == 'no')
+        && (!('note' in data) || (data.note is string && data.note.size() <= 500))
+        && data.createdAt is timestamp;
+    }
+
+    function isValidLeaderboardEntry(data) {
+      return data.keys().hasAll([
+          'uid', 'displayName', 'blockDistrict', 'xp',
+          'streakDays', 'weeksDoneCount', 'solutionsCount',
+          'isPublic', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'displayName', 'blockDistrict', 'xp',
+          'streakDays', 'weeksDoneCount', 'solutionsCount',
+          'isPublic', 'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80
+        && data.blockDistrict is string && data.blockDistrict.size() >= 1 && data.blockDistrict.size() <= 80
+        && data.xp is int && data.xp >= 0 && data.xp <= 100000
+        && data.streakDays is int && data.streakDays >= 0 && data.streakDays <= 3650
+        && data.weeksDoneCount is int && data.weeksDoneCount >= 0 && data.weeksDoneCount <= 1000
+        && data.solutionsCount is int && data.solutionsCount >= 0 && data.solutionsCount <= 10000
+        && data.isPublic is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // 3. Admins (Read-only lookup; clients can never elevate privileges)
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && (isOwner(adminId) || isAdmin());
+      allow list, create, update, delete: if false;
+    }
+
+    // 4. Connection Validation Document
+    match /test/{docId} {
+      allow get: if docId == 'connection';
+      allow list, create, update, delete: if false;
+    }
+
+    // 5. Public-Safe Teacher Profiles + Isolated PII Subcollection
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin() || (isVerifiedUser() && existing().uid == request.auth.uid);
+
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserPublicProfile(incoming())
+        && incoming().uid == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(userId)
+        && isValidUserPublicProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (
+            isOwner(userId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'displayName', 'blockDistrict', 'xp',
+              'streakDays', 'solutionsCount', 'weeksDoneCount', 'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if isValidId(userId) && isAdmin();
+
+      match /private/{docId} {
+        allow get: if isValidId(userId) && isValidId(docId)
+          && (isOwner(userId) || isAdmin())
+          && exists(/databases/$(database)/documents/users/$(userId));
+        allow list: if isAdmin() || (isVerifiedUser() && existing().uid == request.auth.uid);
+
+        allow create: if isValidId(userId) && isValidId(docId)
+          && docId == 'info'
+          && isOwner(userId)
+          && isValidUserPrivateInfo(incoming())
+          && incoming().uid == request.auth.uid
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId));
+
+        allow update: if isValidId(userId) && isValidId(docId)
+          && docId == 'info'
+          && isValidUserPrivateInfo(incoming())
+          && incoming().uid == existing().uid
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && (
+            isAdmin() ||
+            (
+              isOwner(userId) &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['phoneMasked', 'email', 'updatedAt'])
+            )
+          );
+
+        allow delete: if isValidId(userId) && isValidId(docId) && isAdmin();
+      }
+    }
+
+    // 6. Community Teacher Solutions ("I solved this")
+    match /solutions/{solutionId} {
+      allow get: if isValidId(solutionId)
+        && isVerifiedUser()
+        && (existing().isPublic == true || existing().authorUid == request.auth.uid || isAdmin());
+      allow list: if isAdmin()
+        || (isVerifiedUser() && (existing().isPublic == true || existing().authorUid == request.auth.uid));
+
+      allow create: if isValidId(solutionId)
+        && isVerifiedUser()
+        && isValidTeacherSolution(incoming())
+        && incoming().authorUid == request.auth.uid
+        && incoming().helpfulCount == 0
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(solutionId)
+        && isVerifiedUser()
+        && isValidTeacherSolution(incoming())
+        && incoming().authorUid == existing().authorUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (
+            existing().authorUid == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['summary', 'transcript', 'isPublic', 'updatedAt'])
+          ) ||
+          (
+            existing().isPublic == true &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['helpfulCount', 'updatedAt']) &&
+            incoming().helpfulCount == existing().helpfulCount + 1
+          )
+        );
+
+      allow delete: if isValidId(solutionId) && (isAdmin() || (isVerifiedUser() && existing().authorUid == request.auth.uid));
+    }
+
+    // 7. Team Dashboard Analytics Events
+    match /telemetryEvents/{eventId} {
+      allow get: if isValidId(eventId)
+        && (isAdmin() || (isVerifiedUser() && existing().uid == request.auth.uid));
+      allow list: if isAdmin()
+        || (isVerifiedUser() && existing().uid == request.auth.uid);
+
+      allow create: if isValidId(eventId)
+        && isVerifiedUser()
+        && isValidTelemetryEvent(incoming())
+        && incoming().uid == request.auth.uid
+        && incoming().createdAt == request.time;
+
+      allow update, delete: if isValidId(eventId) && isAdmin();
+    }
+
+    // 8. Field Feedback Notes
+    match /feedbackNotes/{noteId} {
+      allow get: if isValidId(noteId)
+        && (isAdmin() || (isVerifiedUser() && existing().authorUid == request.auth.uid));
+      allow list: if isAdmin()
+        || (isVerifiedUser() && existing().authorUid == request.auth.uid);
+
+      allow create: if isValidId(noteId)
+        && isVerifiedUser()
+        && isValidFeedbackNote(incoming())
+        && incoming().authorUid == request.auth.uid
+        && incoming().createdAt == request.time;
+
+      allow update, delete: if isValidId(noteId) && isAdmin();
+    }
+
+    // 9. Gamified Block Leaderboard (Public-Safe, Zero PII)
+    match /leaderboard/{userId} {
+      allow get: if isValidId(userId)
+        && isVerifiedUser()
+        && (existing().isPublic == true || isOwner(userId) || isAdmin());
+      allow list: if isAdmin()
+        || (isVerifiedUser() && existing().isPublic == true);
+
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && isValidLeaderboardEntry(incoming())
+        && incoming().uid == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(userId)
+        && isValidLeaderboardEntry(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (
+            isOwner(userId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'displayName', 'blockDistrict', 'xp',
+              'streakDays', 'weeksDoneCount', 'solutionsCount',
+              'isPublic', 'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if isValidId(userId) && (isAdmin() || isOwner(userId));
+    }
+  }
+}

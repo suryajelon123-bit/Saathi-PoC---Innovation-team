@@ -1,4 +1,4 @@
-import { Check, Mic, Play, RotateCcw, Square } from 'lucide-react';
+import { Check, Mic, Pause, Play, RotateCcw, Square } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Language } from '../types';
 
@@ -38,6 +38,7 @@ export function VoiceRecorderPanel({
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
+  const submittedUrlsRef = useRef<Set<string>>(new Set());
 
   const cleanupMedia = () => {
     if (timerRef.current !== null) {
@@ -48,13 +49,17 @@ export function VoiceRecorderPanel({
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
+    if (audioElRef.current) {
+      audioElRef.current.pause();
+      audioElRef.current = null;
+    }
     mediaRecorderRef.current = null;
   };
 
   useEffect(() => {
     return () => {
       cleanupMedia();
-      if (audioUrl) {
+      if (audioUrl && !submittedUrlsRef.current.has(audioUrl)) {
         URL.revokeObjectURL(audioUrl);
       }
     };
@@ -66,10 +71,10 @@ export function VoiceRecorderPanel({
     setMicModeNote(null);
     chunksRef.current = [];
 
-    if (audioUrl) {
+    if (audioUrl && !submittedUrlsRef.current.has(audioUrl)) {
       URL.revokeObjectURL(audioUrl);
-      setAudioUrl(undefined);
     }
+    setAudioUrl(undefined);
 
     setStatus('recording');
     timerRef.current = window.setInterval(() => {
@@ -77,7 +82,12 @@ export function VoiceRecorderPanel({
     }, 1000);
 
     try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      if (
+        typeof navigator !== 'undefined' &&
+        navigator.mediaDevices &&
+        typeof navigator.mediaDevices.getUserMedia === 'function' &&
+        typeof MediaRecorder !== 'undefined'
+      ) {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         streamRef.current = stream;
         const recorder = new MediaRecorder(stream);
@@ -99,15 +109,15 @@ export function VoiceRecorderPanel({
       } else {
         setMicModeNote(
           lang === 'hi'
-            ? 'माइक अनुमति उपलब्ध नहीं — सिमुलेटेड रिकॉर्डिंग चालू है'
-            : 'Mic unavailable — prototype timer mode active'
+            ? 'माइक उपलब्ध नहीं — आप समय के साथ परीक्षण कर सकते हैं या नीचे लिख सकते हैं।'
+            : 'Mic unavailable — timer mode active, or type below.'
         );
       }
     } catch {
       setMicModeNote(
         lang === 'hi'
-          ? 'माइक अनुमति नहीं मिली — आप फिर भी समय के साथ परीक्षण या लिखकर साझा कर सकते हैं'
-          : 'Mic permission declined — timer test mode active, or type below'
+          ? 'माइक अनुमति नहीं मिली — आप नीचे लिखकर भी साझा कर सकते हैं।'
+          : 'Mic permission declined — you can also type below.'
       );
     }
   };
@@ -126,10 +136,10 @@ export function VoiceRecorderPanel({
 
   const resetRecording = () => {
     cleanupMedia();
-    if (audioUrl) {
+    if (audioUrl && !submittedUrlsRef.current.has(audioUrl)) {
       URL.revokeObjectURL(audioUrl);
-      setAudioUrl(undefined);
     }
+    setAudioUrl(undefined);
     setDurationSec(0);
     setStatus('idle');
     setMicModeNote(null);
@@ -159,17 +169,21 @@ export function VoiceRecorderPanel({
     const trimmed = noteText.trim();
     if (!hasVoice && !trimmed) return;
 
+    if (audioUrl) {
+      submittedUrlsRef.current.add(audioUrl);
+    }
+
     onSubmit({
       method: hasVoice ? 'voice' : 'text',
       text:
         trimmed ||
         (lang === 'hi'
           ? mode === 'solution'
-            ? `मेरी आवाज़ में कक्षा का समाधान (${Math.max(3, durationSec)} सेकंड)`
-            : `मेरी आवाज़ में साझा की गई बात (${Math.max(3, durationSec)} सेकंड)`
+            ? `मेरी आवाज़ में कक्षा का हल (${Math.max(3, durationSec)} सेकंड)`
+            : `मेरी आवाज़ में साझा बात (${Math.max(3, durationSec)} सेकंड)`
           : mode === 'solution'
           ? `Voice solution recorded (${Math.max(3, durationSec)}s)`
-          : `Voice challenge shared (${Math.max(3, durationSec)}s)`),
+          : `Voice note shared (${Math.max(3, durationSec)}s)`),
       durationSec: Math.max(3, durationSec),
       audioUrl,
     });
@@ -184,111 +198,86 @@ export function VoiceRecorderPanel({
   const canSubmit = status === 'recorded' || noteText.trim().length > 0;
 
   return (
-    <div className="space-y-4">
-      {/* Voice Capture Zone */}
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <p className="text-sm font-semibold text-slate-900">
-              {lang === 'hi' ? 'अपनी आवाज़ में बोलकर रिकॉर्ड करें' : 'Record in your own voice'}
-            </p>
-            <p className="text-xs text-slate-600">
-              {lang === 'hi'
-                ? 'सीधी और सरल भाषा में बताएं — जैसे आप किसी साथी शिक्षक से बात कर रहे हों।'
-                : 'Speak naturally, just as you would explain to a fellow teacher.'}
-            </p>
-          </div>
+    <div className="space-y-3.5">
+      {/* Voice-First Capture Zone */}
+      <div className="rounded-2xl border border-[#B6D4D6] bg-[#EEF6F6] p-4 flex flex-col items-center text-center gap-3">
+        <p className="text-sm font-bold text-slate-900">
+          {lang === 'hi' ? 'बोलकर बताएं (सरल और तेज़)' : 'Speak in your own voice'}
+        </p>
 
-          <div className="flex items-center gap-3 w-full sm:w-auto shrink-0">
-            {status === 'idle' && (
-              <button
-                type="button"
-                onClick={startRecording}
-                className="w-full sm:w-auto min-h-[52px] sm:min-h-[44px] px-5 py-3 rounded-xl bg-[#0D5C63] hover:bg-[#09474D] text-white text-sm font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer whitespace-nowrap"
-              >
-                <Mic className="w-5 h-5" />
-                <span>{lang === 'hi' ? 'बोलना शुरू करें' : 'Start Recording'}</span>
-              </button>
-            )}
-
-            {status === 'recording' && (
-              <button
-                type="button"
-                onClick={stopRecording}
-                className="w-full sm:w-auto min-h-[52px] sm:min-h-[44px] px-5 py-3 rounded-xl bg-[#B91C1C] hover:bg-[#991B1B] text-white text-sm font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer whitespace-nowrap"
-              >
-                <Square className="w-4 h-4 fill-current" />
-                <span>
-                  {lang === 'hi' ? 'रोकें' : 'Stop'} ({formatDuration(durationSec)})
-                </span>
-              </button>
-            )}
-
-            {status === 'recorded' && (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={togglePreview}
-                  className="min-h-[44px] px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-sm font-medium flex items-center gap-2 cursor-pointer whitespace-nowrap"
-                >
-                  <Play className="w-4 h-4 text-[#0D5C63]" />
-                  <span className="tabular-nums">
-                    {isPlayingPreview
-                      ? lang === 'hi'
-                        ? 'चल रहा है...'
-                        : 'Playing...'
-                      : `${lang === 'hi' ? 'सुनें' : 'Play'} (${formatDuration(Math.max(1, durationSec))})`}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={resetRecording}
-                  aria-label={lang === 'hi' ? 'दोबारा रिकॉर्ड करें' : 'Re-record'}
-                  className="min-h-[44px] min-w-[44px] rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-600 flex items-center justify-center cursor-pointer"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+        {status === 'idle' && (
+          <button
+            type="button"
+            onClick={startRecording}
+            className="w-full sm:w-auto min-h-[54px] px-6 py-3 rounded-2xl bg-[#0D5C63] hover:bg-[#09474D] text-white text-sm font-bold flex items-center justify-center gap-2.5 cursor-pointer transition-transform active:scale-95"
+          >
+            <Mic className="w-5 h-5" />
+            <span>{lang === 'hi' ? 'माइक दबाएं और बोलें' : 'Tap Mic & Speak'}</span>
+          </button>
+        )}
 
         {status === 'recording' && (
-          <div className="mt-3 pt-3 border-t border-slate-200 flex items-center justify-between text-xs text-[#B91C1C] font-medium">
-            <span className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#B91C1C] animate-pulse" />
-              {lang === 'hi' ? 'रिकॉर्डिंग जारी है...' : 'Recording in progress...'}
+          <button
+            type="button"
+            onClick={stopRecording}
+            className="w-full sm:w-auto min-h-[54px] px-6 py-3 rounded-2xl bg-[#B91C1C] hover:bg-[#991B1B] text-white text-sm font-bold flex items-center justify-center gap-2.5 cursor-pointer"
+          >
+            <Square className="w-4 h-4 fill-current" />
+            <span className="tabular-nums">
+              {lang === 'hi' ? 'रोकें' : 'Stop'} ({formatDuration(durationSec)})
             </span>
-            <span className="font-mono-tabular">{formatDuration(durationSec)}</span>
+          </button>
+        )}
+
+        {status === 'recorded' && (
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={togglePreview}
+              className="min-h-[46px] px-4 py-2 rounded-xl border border-[#0D5C63] bg-white text-[#0D5C63] text-sm font-bold flex items-center gap-2 cursor-pointer"
+            >
+              {isPlayingPreview ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+              <span className="tabular-nums">
+                {isPlayingPreview
+                  ? lang === 'hi'
+                    ? 'चल रहा है'
+                    : 'Playing'
+                  : `${lang === 'hi' ? 'सुनें' : 'Play'} (${formatDuration(Math.max(1, durationSec))})`}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={resetRecording}
+              aria-label={lang === 'hi' ? 'दोबारा रिकॉर्ड करें' : 'Re-record'}
+              className="min-h-[46px] min-w-[46px] rounded-xl border border-slate-300 bg-white text-slate-700 flex items-center justify-center cursor-pointer"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
           </div>
         )}
 
-        {micModeNote && (
-          <p className="mt-2 text-xs text-slate-600">{micModeNote}</p>
-        )}
+        {micModeNote && <p className="text-xs text-slate-600">{micModeNote}</p>}
       </div>
 
-      {/* Text Fallback */}
+      {/* Compact Optional Text Box */}
       <div>
-        <label className="block text-sm font-medium text-slate-800 mb-1.5">
-          {lang === 'hi' ? 'या लिखकर बताएं (वैकल्पिक यदि आवाज़ रिकॉर्ड की है)' : 'Or type here (optional if recorded by voice)'}
-        </label>
         <textarea
-          rows={3}
+          rows={2}
           value={noteText}
           onChange={(e) => setNoteText(e.target.value)}
           placeholder={textPlaceholder}
-          className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0D5C63] focus:border-transparent"
+          aria-label={lang === 'hi' ? 'लिखकर बताएं (वैकल्पिक)' : 'Optional text note'}
+          className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0D5C63]"
         />
       </div>
 
       {/* Actions */}
-      <div className="flex flex-wrap items-center justify-end gap-3 pt-1">
+      <div className="flex items-center justify-end gap-2.5">
         {onCancel && (
           <button
             type="button"
             onClick={onCancel}
-            className="min-h-[44px] px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-sm font-medium cursor-pointer"
+            className="min-h-[44px] px-4 py-2 rounded-xl border border-slate-300 bg-white text-slate-700 text-sm font-semibold cursor-pointer"
           >
             {lang === 'hi' ? 'रद्द करें' : 'Cancel'}
           </button>
@@ -297,9 +286,9 @@ export function VoiceRecorderPanel({
           type="button"
           disabled={!canSubmit || status === 'recording'}
           onClick={handleSubmit}
-          className={`min-h-[44px] px-5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 transition-colors ${
+          className={`min-h-[46px] px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors ${
             canSubmit && status !== 'recording'
-              ? 'bg-[#0D5C63] hover:bg-[#09474D] text-white cursor-pointer'
+              ? 'bg-[#16A34A] hover:bg-[#15803D] text-white cursor-pointer'
               : 'bg-slate-200 text-slate-500 cursor-not-allowed'
           }`}
         >
