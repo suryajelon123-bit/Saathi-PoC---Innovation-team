@@ -1,0 +1,6 @@
+{
+  "name": "Saathi — Teacher Problem Map & Community Hub",
+  "description": "Hindi-first clickable teacher community hub prototype featuring a proportional problem map, team-written improvement plans, voice solution sharing, challenge capture, recognition board, and field-sensing telemetry.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
